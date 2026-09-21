@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enterprise Water Platform (Government Edition)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- ApexCharts -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- PDF Engine Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- Firebase SDKs (v8) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Noto Sans Lao', sans-serif; }
+    #map { height: 340px; z-index: 1; background-color: #aad3df; }
+
+    #map:fullscreen {
+      width: 100vw !important;
+      height: 100vh !important;
+    }
+
+    @keyframes pulse-red {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .marker-alert-pulse {
+      animation: pulse-red 1.8s infinite;
+    }
+
+    .top-scrollbar-container {
+      overflow-x: auto;
+      transform: rotateX(180deg);
+    }
+    .top-scrollbar-container > table {
+      transform: rotateX(180deg);
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 pb-12">
+
+  <!-- Navigation -->
+  <nav class="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">🌊</span>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">ລະບົບຕິດຕາມຄຸນນະພາບນ້ຳ (ກົມຊັບພະຍາກອນນ້ຳ)</h1>
+          <p class="text-[11px] text-slate-400">Department of Water Resources Enterprise Platform</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-2">
+          <span class="text-xs text-slate-400">ຍົດຜູ້ໃຊ້:</span>
+          <select id="roleSelector" onchange="changeUserRole(this.value)" class="text-xs font-bold bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white outline-none cursor-pointer">
+            <option value="SUPER_ADMIN">👑 Super Admin (ສູງສຸດ)</option>
+            <option value="STAFF">🛠️ Staff (ລະດັບກາງ)</option>
+            <option value="VIEWER" selected>👁️ User (ຜູ້ໃຊ້ທົ່ວໄປ)</option>
+          </select>
+        </div>
+
+        <button onclick="toggleLogsModal()" class="bg-indigo-700 hover:bg-indigo-600 text-white text-xs px-3 py-2 rounded-lg font-medium transition flex items-center gap-1 shadow">
+          📜 ປະວັດການໃຊ້ງານ (Activity Logs)
+        </button>
+
+        <button id="adminSettingsBtn" onclick="toggleSettingsModal()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-2 rounded-lg font-medium transition flex items-center gap-1 shadow hidden">
+          ⚙️ ຕັ້ງຄ່າລະບົບ
+        </button>
+
+        <button onclick="exportCSV()" class="bg-emerald-700 hover:bg-emerald-600 text-white text-xs px-3 py-2 rounded-lg font-medium transition shadow">
+          📊 Export CSV
+        </button>
+
+        <button onclick="downloadPDFReport()" id="pdfBtn" class="bg-rose-700 hover:bg-rose-600 text-white text-xs px-3 py-2 rounded-lg font-medium transition flex items-center gap-1 shadow">
+          📄 ດາວໂຫລດ PDF
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+
+    <!-- KPI Metric Dashboard Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs text-slate-500 font-medium">ຊຸດຂໍ້ມູນບໍລິສັດ/ຫົວຂໍ້ຫຼັກ</p>
+          <h3 class="text-2xl font-bold text-slate-800" id="kpiTotal">0</h3>
+        </div>
+        <div class="bg-sky-50 p-3 rounded-lg text-sky-600 text-xl">📍</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs text-slate-500 font-medium">ສະຖານີປົກກະຕິ (Normal)</p>
+          <h3 class="text-2xl font-bold text-emerald-600" id="kpiNormal">0</h3>
+        </div>
+        <div class="bg-emerald-50 p-3 rounded-lg text-emerald-600 text-xl">✅</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs text-slate-500 font-medium">ສະຖານີເຕືອນໄພ (Alert)</p>
+          <h3 class="text-2xl font-bold text-rose-600" id="kpiAlert">0</h3>
+        </div>
+        <div class="bg-rose-50 p-3 rounded-lg text-rose-600 text-xl">⚠️</div>
+      </div>
+    </div>
+
+    <!-- Map & Analytics -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-bold text-slate-800 flex items-center gap-2">📍 ແຜນທີ່ Google Maps GIS ສະພາບນ້ຳ</h2>
+          <span class="text-xs bg-sky-100 text-sky-800 px-2.5 py-1 rounded-full font-semibold" id="stationCount">0 Batch Records</span>
+        </div>
+        <div id="map" class="rounded-xl border border-slate-200"></div>
+      </div>
+
+      <!-- Chart Panel -->
+      <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
+        <div class="flex flex-wrap justify-between items-center mb-2 gap-2">
+          <h2 class="font-bold text-slate-800">📈 ກຣາຟແຍກສະເພາະຕົວຊີ້ວັດ</h2>
+          <div id="chartIndicatorTabs" class="flex flex-wrap gap-1 text-[11px]"></div>
+        </div>
+        <p class="text-[11px] text-slate-500 mb-2">ເລືອກເບິ່ງແນວໂນ້ມແຍກລາຍຕົວຊີ້ວັດເພື່ອການວິເຄາະທີ່ລະອຽດຂຶ້ນ.</p>
+        <div class="relative w-full h-56" id="apexChartContainer"></div>
+      </div>
+    </div>
+
+    <!-- Form & Table Area -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Input Form Layer -->
+      <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <h2 class="text-lg font-bold text-slate-800 border-b pb-2 mb-4">📝 ຟອມບັນທຶກຜົນການວິເຄາະນ້ຳ (Batch)</h2>
+        
+        <!-- ສ່ວນຂໍ້ມູນ Master: ຊື່ບໍລິສັດ ແລະ ຜູ້ບັນທຶກ -->
+        <div class="bg-indigo-50 p-3.5 rounded-xl border border-indigo-100 space-y-3 mb-4">
+          <div>
+            <label class="block text-xs font-bold text-indigo-900 mb-1">🏢 ຊື່ບໍລິສັດ / ຫົວຂໍ້ຫຼັກ</label>
+            <input type="text" id="companyName" autocomplete="off" class="w-full border p-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="ລະບຸຊື່ບໍລິສັດ...">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] font-bold text-indigo-900 mb-1">👤 ຜູ້ບັນທຶກ</label>
+              <input type="text" id="recorderName" autocomplete="off" class="w-full border p-2 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white" placeholder="ຊື່ຜູ້ບັນທຶກ">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-indigo-900 mb-1">⏰ ເວລາບັນທຶກ</label>
+              <input type="datetime-local" id="customDatetime" class="w-full border p-2 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+            </div>
+          </div>
+        </div>
+
+        <!-- ຟອມປ້ອນຂໍ້ມູນ Detail: ສະຖານີ -->
+        <form id="waterForm" autocomplete="off" onsubmit="addTempStation(event)" class="space-y-3 border-t pt-3">
+          <p class="text-xs font-bold text-slate-600 flex justify-between items-center">
+            <span>📍 ປ້ອນຂໍ້ມູນສະຖານີ (ແອດເພີ່ມທີລະສະຖານີ)</span>
+            <button type="button" id="gpsBtn" onclick="getCurrentLocation()" class="bg-sky-600 hover:bg-sky-500 text-white text-[10px] px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 shadow-sm">
+              🎯 ດຶງ GPS
+            </button>
+          </p>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">ລະຫັດສະຖານີ</label>
+              <input type="text" id="code" required autocomplete="off" class="w-full border p-2 rounded-lg text-xs outline-none focus:ring-2 focus:ring-sky-500" placeholder="ST-101">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">ແຂວງ/ເມືອງ</label>
+              <input type="text" id="province" required autocomplete="off" class="w-full border p-2 rounded-lg text-xs outline-none focus:ring-2 focus:ring-sky-500" placeholder="ນະຄອນຫຼວງ">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-1">ຊື່ສະຖານີ / ສະຖານທີ່ກວດວັດ</label>
+            <input type="text" id="name" required autocomplete="off" class="w-full border p-2 rounded-lg text-xs outline-none focus:ring-2 focus:ring-sky-500" placeholder="ສະຖານີທີ 1...">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <input type="number" step="any" id="lat" required autocomplete="off" class="w-full border p-2 rounded text-xs outline-none" placeholder="Lat" value="17.9757">
+            <input type="number" step="any" id="lng" required autocomplete="off" class="w-full border p-2 rounded text-xs outline-none" placeholder="Lng" value="102.6331">
+          </div>
+
+          <!-- Dynamic Indicators Container & Quick Add Section -->
+          <div class="border-t border-slate-200 pt-3 mt-2">
+            <div class="flex justify-between items-center mb-2">
+              <label class="block text-[11px] font-bold text-slate-700">🧪 ໂຕຊີ້ວັດຄຸນນະພາບນໍ້າ (Indicators)</label>
+              <button type="button" id="quickAddIndBtn" onclick="quickAddIndicatorPrompt()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] px-2 py-1 rounded-lg font-bold transition flex items-center gap-1 shadow-sm">
+                ➕ ເພີ່ມໂຕຊີ້ວັດສະເພາະຈຸດ
+              </button>
+            </div>
+            <div id="dynamicFormIndicators" class="grid grid-cols-1 gap-2 pt-1"></div>
+          </div>
+
+          <button type="submit" id="addTempBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 rounded-lg shadow transition flex justify-center items-center gap-1 mt-3">
+            ➕ ເພີ່ມສະຖານີເຂົ້າຕາຕະລາງຊົ່ວຄາວ
+          </button>
+        </form>
+
+        <!-- ຕາຕະລາງພັກຂໍ້ມູນຊົ່ວຄາວ (Temporary Station List) -->
+        <div class="mt-4 border-t pt-3">
+          <h3 class="text-xs font-bold text-slate-700 mb-2">📋 ລາຍການສະຖານີທີ່ລໍຖ້າບັນທຶກ (<span id="tempCount" class="text-indigo-600">0</span>)</h3>
+          <div class="max-h-36 overflow-y-auto border rounded-xl p-2 bg-slate-50 space-y-1.5 text-xs" id="tempListContainer">
+            <p class="text-slate-400 text-center py-3">ຍັງບໍ່ມີຂໍ້ມູນສະຖານີ</p>
+          </div>
+
+          <button type="button" onclick="saveAllBatch()" id="saveBatchBtn" class="w-full bg-indigo-700 hover:bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-md transition mt-3 hidden">
+            💾 ບັນທຶກຂໍ້ມູນທັງໝົດ (Batch Save)
+          </button>
+        </div>
+      </div>
+
+      <!-- Data Table Area (Accordion Table) -->
+      <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <h2 class="text-lg font-bold text-slate-800">📋 ຖານຂໍ້ມູນຜົນການກວດວັດ (ລາຍບໍລິສັດ)</h2>
+          <button id="adminClearAllBtn" onclick="clearAllData()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs px-3 py-1.5 rounded-lg border border-rose-200 hidden">
+            🗑️ ລ້າງຂໍ້ມູນທັງໝົດ
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <input type="text" id="searchInput" autocomplete="off" oninput="render()" placeholder="🔍 ຄົ້ນຫາ ຊື່ບໍລິສັດ, ລະຫັດ ຫຼື ສະຖານທີ່..." class="w-full border p-2 rounded-lg text-xs outline-none">
+          <select id="statusFilter" onchange="render()" class="w-full border p-2 rounded-lg text-xs outline-none bg-white">
+            <option value="ALL">🌐 ສະຖານະທັງໝົດ</option>
+            <option value="NORMAL">✅ Normal ປົກກະຕິ</option>
+            <option value="ALERT">🚨 Alert ເຕືອນໄພ</option>
+          </select>
+        </div>
+
+        <div id="printableTableContainer" class="top-scrollbar-container">
+          <table class="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr id="tableHeader" class="bg-slate-50 text-slate-600 border-b">
+                <th class="p-3 text-center">ລູກສອນ</th>
+                <th class="p-3 text-center w-12">ລຳດັບ</th>
+                <th class="p-3">ຊື່ບໍລິສັດ / ຫົວຂໍ້ຫຼັກ</th>
+                <th class="p-3 text-center">ຈຳນວນສະຖານີ</th>
+                <th class="p-3">ເວລາທີ່ບັນທຶກ</th>
+                <th class="p-3">ຜູ້ບັນທຶກ</th>
+                <th class="p-3 text-center no-print">ຈັດການ</th>
+              </tr>
+            </thead>
+            <tbody id="dataTable" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Activity Logs -->
+  <div id="logsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">📜 ປະວັດການບັນທຶກ ແລະ ລົບຂໍ້ມູນ (Activity Logs)</h3>
+        <button onclick="toggleLogsModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="overflow-y-auto flex-1 border rounded-xl">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead class="bg-slate-100 sticky top-0 text-slate-700">
+            <tr>
+              <th class="p-2.5 border-b">ເວລາ</th>
+              <th class="p-2.5 border-b">ການກະທຳ (Action)</th>
+              <th class="p-2.5 border-b">ລະຫັດ/ຂໍ້ມູນ</th>
+              <th class="p-2.5 border-b">ຜູ້ดำเนินการ (Performed By)</th>
+              <th class="p-2.5 border-b">ຍົດ (Role)</th>
+            </tr>
+          </thead>
+          <tbody id="logsTableBody" class="divide-y divide-slate-100">
+            <tr><td colspan="5" class="p-4 text-center text-slate-400">ກຳລັງໂຫລດຂໍ້ມູນ...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="text-lg font-bold text-slate-800">⚙️ ຕັ້ງຄ່າລະບົບ (Administrator Config)</h3>
+        <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-slate-600 text-xl font-bold">&times;</button>
+      </div>
+
+      <div class="flex border-b text-xs font-bold gap-2">
+        <button onclick="switchConfigTab('indicators')" id="tabBtn-indicators" class="py-2 px-3 border-b-2 border-sky-600 text-sky-600">🧪 ເພີ່ມ Indicators</button>
+        <button onclick="switchConfigTab('thresholds')" id="tabBtn-thresholds" class="py-2 px-3 border-b-2 border-transparent text-slate-500">⚠️ ເກນເຕືອນໄພ (Thresholds)</button>
+      </div>
+
+      <div id="tabContent-indicators" class="space-y-3">
+        <div class="flex gap-2">
+          <input type="text" id="newIndName" autocomplete="off" placeholder="ຊື່ດັດຊະນີ (ເຊັ່ນ: pH, BOD)" class="border p-2 rounded-lg text-sm w-1/2 outline-none">
+          <input type="text" id="newIndUnit" autocomplete="off" placeholder="ຫົວໜ່ວຍ (ເຊັ່ນ: mg/L)" class="border p-2 rounded-lg text-sm w-1/2 outline-none">
+        </div>
+        <button onclick="addCustomIndicator()" class="w-full bg-emerald-700 text-white font-medium py-2 rounded-lg text-sm shadow">➕ ເພີ່ມ Indicator</button>
+        <div class="border-t pt-2">
+          <ul id="customIndicatorsList" class="space-y-1 max-h-32 overflow-y-auto"></ul>
+        </div>
+      </div>
+
+      <div id="tabContent-thresholds" class="space-y-3 hidden">
+        <div id="dynamicThresholdsContainer" class="grid grid-cols-2 gap-3 text-xs max-h-60 overflow-y-auto p-1"></div>
+        <button onclick="saveThresholdConfig()" class="w-full bg-sky-700 text-white font-medium py-2 rounded-lg text-sm shadow">💾 ບັນທຶກເກນເຕືອນໄພ</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyB4WeFZR2cjXFZ_7ZO_vKfNeFlLxERtN3s",
+      authDomain: "nam-nai-laos.firebaseapp.com",
+      databaseURL: "https://nam-nai-laos-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "nam-nai-laos",
+      storageBucket: "nam-nai-laos.firebasestorage.app",
+      messagingSenderId: "665586118465",
+      appId: "1:665586118465:web:a0d1dd4fcd51986d79bbc0",
+      measurementId: "G-H1X1J1XKSW"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let currentUserRole = 'VIEWER'; 
+    let waterData = [];
+    let customIndicators = JSON.parse(localStorage.getItem('ENT_WATER_CONFIG')) || [];
+    let masterIndicators = JSON.parse(localStorage.getItem('ENT_WATER_CONFIG_MASTER')) || [...customIndicators];
+    let sysThresholds = JSON.parse(localStorage.getItem('ENT_THRESHOLDS_CONFIG_V3')) || {};
+    
+    let tempStations = [];
+    let expandedRows = {};
+
+    let map, markersGroup;
+    let apexChart = null;
+    let currentSelectedIndicator = '';
+
+    const normalIcon = L.divIcon({
+      className: 'custom-pin-normal',
+      html: `<div style="background-color: #10b981; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 3px 6px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px;">✅</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+
+    const alertIcon = L.divIcon({
+      className: 'custom-pin-alert',
+      html: `<div class="marker-alert-pulse" style="background-color: #ef4444; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 3px 6px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px;">⚠️</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+
+    function cleanOrphanedThresholds() {
+      const activeKeys = customIndicators.map(i => i.key);
+      let changed = false;
+
+      Object.keys(sysThresholds).forEach(key => {
+        const match = key.match(/^cfg_(custom_\d+)_(min|max)$/);
+        if (match) {
+          const customKey = match[1];
+          if (!activeKeys.includes(customKey)) {
+            delete sysThresholds[key];
+            changed = true;
+          }
+        }
+      });
+
+      if (changed) {
+        localStorage.setItem('ENT_THRESHOLDS_CONFIG_V3', JSON.stringify(sysThresholds));
+      }
+    }
+
+    function getCurrentLocation() {
+      if (currentUserRole === 'VIEWER') {
+        return Swal.fire({ icon: 'warning', title: 'ບໍ່ມີສິດ!', text: 'ຜູ້ໃຊ້ທົ່ວໄປບໍ່ສາມາດແກ້ໄຂພິກັດໄດ້!' });
+      }
+      
+      const gpsBtn = document.getElementById('gpsBtn');
+      gpsBtn.innerText = '⏳ ດຶງພິກັດ...';
+      gpsBtn.disabled = true;
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            document.getElementById('lat').value = position.coords.latitude.toFixed(6);
+            document.getElementById('lng').value = position.coords.longitude.toFixed(6);
+            gpsBtn.innerText = '🎯 ດຶງ GPS';
+            gpsBtn.disabled = false;
+            
+            Swal.fire({
+              icon: 'success',
+              title: 'ດຶງພິກັດສຳເລັດ!',
+              timer: 1500,
+              showConfirmButton: false
+            });
+          },
+          (error) => {
+            gpsBtn.innerText = '🎯 ດຶງ GPS';
+            gpsBtn.disabled = false;
+            let errMsg = 'ບໍ່ສາມາດດຶງພິກັດ GPS ໄດ້';
+            if (error.code === error.PERMISSION_DENIED) errMsg = 'ກະລຸນາເປີດສິດ Access Location ໃນບຣາວເຊີ!';
+            Swal.fire({ icon: 'error', title: 'ເກີດຂໍ້ຜິດພາດ', text: errMsg });
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      } else {
+        gpsBtn.innerText = '🎯 ດຶງ GPS';
+        gpsBtn.disabled = false;
+        Swal.fire({ icon: 'error', title: 'ບໍ່ຮອງຮັບ', text: 'ບຣາວເຊີຂອງທ່ານບໍ່ຮອງຮັບ Geolocation' });
+      }
+    }
+
+    /* --- ຟັງຊັນເພີ່ມໂຕຊີ້ວັດສະເພາະຈຸດໂດຍตรงຈາກຟອມ (Quick Add Indicator) --- */
+    function quickAddIndicatorPrompt() {
+      if (currentUserRole === 'VIEWER') {
+        return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!', text: 'ຜູ້ໃຊ້ທົ່ວໄປບໍ່ສາມາດເພີ່ມໂຕຊີ້ວັດໄດ້' });
+      }
+
+      Swal.fire({
+        title: '🧪 ເພີ່ມໂຕຊີ້ວັດຄຸນນະພາບນໍ້າສະເພາະຈຸດ',
+        html: `
+          <div class="text-left space-y-3 p-1">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">ຊື່ໂຕຊີ້ວັດ (ເຊັ່ນ: Turbidity, DO, COD)</label>
+              <input id="swal-ind-name" class="swal2-input !m-0 !w-full text-xs" placeholder="ລະບຸຊື່ໂຕຊີ້ວັດ..." autocomplete="off">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">ຫົວໜ່ວຍ (ເຊັ່ນ: NTU, mg/L, °C)</label>
+              <input id="swal-ind-unit" class="swal2-input !m-0 !w-full text-xs" placeholder="ລະບຸຫົວໜ່ວຍ (ຖ້າມີ)..." autocomplete="off">
+            </div>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '➕ ເພີ່ມເຂົ້າຟອມ',
+        cancelButtonText: 'ຍົກເລີກ',
+        confirmButtonColor: '#4f46e5',
+        cancelButtonColor: '#64748b',
+        focusConfirm: false,
+        preConfirm: () => {
+          const name = document.getElementById('swal-ind-name').value.trim();
+          const unit = document.getElementById('swal-ind-unit').value.trim();
+          if (!name) {
+            Swal.showValidationMessage('ກະລຸນາລະບຸຊື່ໂຕຊີ້ວັດ!');
+            return false;
+          }
+          return { name, unit };
+        }
+      }).then((result) => {
+        if (result.isConfirmed) {
+          const { name, unit } = result.value;
+          const key = 'custom_' + Date.now();
+          const newInd = { key, name, unit };
+
+          customIndicators.push(newInd);
+          masterIndicators.push(newInd);
+
+          localStorage.setItem('ENT_WATER_CONFIG', JSON.stringify(customIndicators));
+          localStorage.setItem('ENT_WATER_CONFIG_MASTER', JSON.stringify(masterIndicators));
+
+          if (!currentSelectedIndicator) currentSelectedIndicator = key;
+
+          renderFormCustomInputs();
+          renderSettingsList();
+          renderThresholdFields();
+          render();
+
+          Swal.fire({
+            icon: 'success',
+            title: 'ເພີ່ມໂຕຊີ້ວັດສຳເລັດ!',
+            text: `ເພີ່ມ "${name}" ເຂົ້າໃນຟອມຮຽບຮ້ອຍແລ້ວ`,
+            timer: 1500,
+            showConfirmButton: false
+          });
+        }
+      });
+    }
+
+    function listenToFirebase() {
+      db.ref('water_records').on('value', snapshot => {
+        const data = snapshot.val();
+        waterData = [];
+        if (data) {
+          Object.keys(data).forEach(key => {
+            waterData.push({ fbKey: key, ...data[key] });
+          });
+          waterData.sort((a, b) => (b.id || 0) - (a.id || 0));
+        }
+        render();
+      });
+    }
+
+    function toggleLogsModal() {
+      const modal = document.getElementById('logsModal');
+      modal.classList.toggle('hidden');
+      if (!modal.classList.contains('hidden')) {
+        fetchActivityLogs();
+      }
+    }
+
+    function fetchActivityLogs() {
+      const tbody = document.getElementById('logsTableBody');
+      tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-400">ກຳລັງໂຫລດຂໍ້ມູນ...</td></tr>';
+
+      db.ref('activity_logs').limitToLast(50).once('value', snapshot => {
+        const logs = snapshot.val();
+        if (!logs) {
+          tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-400">ບໍ່ມີປະວັດຂໍ້ມູນ</td></tr>';
+          return;
+        }
+
+        let logsList = [];
+        Object.keys(logs).forEach(k => logsList.push(logs[k]));
+        logsList.reverse();
+
+        tbody.innerHTML = '';
+        logsList.forEach(log => {
+          let actionBadge = '';
+          if (log.action === 'CREATE') {
+            actionBadge = '<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">🟢 ບັນທຶກ (CREATE)</span>';
+          } else if (log.action === 'DELETE') {
+            actionBadge = '<span class="bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-bold">🔴 ລົບທັງໝົດ</span>';
+          } else if (log.action === 'DELETE_STATION') {
+            actionBadge = '<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">🟠 ລົບສະຖານີຍ່ອຍ</span>';
+          } else if (log.action === 'CLEAR_ALL') {
+            actionBadge = '<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">💣 ລ້າງທັງໝົດ</span>';
+          }
+
+          tbody.innerHTML += `
+            <tr class="hover:bg-slate-50">
+              <td class="p-2.5 font-mono text-slate-500">${log.timestamp || '-'}</td>
+              <td class="p-2.5">${actionBadge}</td>
+              <td class="p-2.5 font-mono font-bold text-slate-700">${log.itemCode || '-'}</td>
+              <td class="p-2.5 font-bold text-amber-900">${log.performedBy || 'ບໍ່ລະບຸ'}</td>
+              <td class="p-2.5 text-slate-500">${log.userRole || '-'}</td>
+            </tr>
+          `;
+        });
+      });
+    }
+
+    async function changeUserRole(newRole) {
+      if (newRole === 'SUPER_ADMIN') {
+        const { value: pin } = await Swal.fire({
+          title: '🔒 ກະລຸນາໃສ່ລະຫັດຜ່ານ Super Admin:',
+          input: 'password',
+          inputPlaceholder: 'ใส่รหัสผ่าน...',
+          showCancelButton: true,
+          confirmButtonText: 'ຕົກລົງ',
+          cancelButtonText: 'ຍົກເລີກ'
+        });
+
+        if (pin !== '9999') {
+          Swal.fire({ icon: 'error', title: 'ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ!' });
+          document.getElementById('roleSelector').value = currentUserRole;
+          return;
+        }
+      } else if (newRole === 'STAFF') {
+        const { value: pin } = await Swal.fire({
+          title: '🔒 ກະລຸນາໃສ່ລະຫັດຜ່ານ Staff:',
+          input: 'password',
+          inputPlaceholder: 'ใส่รหัสผ่าน...',
+          showCancelButton: true,
+          confirmButtonText: 'ຕົກລົງ',
+          cancelButtonText: 'ຍົກເລີກ'
+        });
+
+        if (pin !== '1234') {
+          Swal.fire({ icon: 'error', title: 'ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ!' });
+          document.getElementById('roleSelector').value = currentUserRole;
+          return;
+        }
+      }
+
+      currentUserRole = newRole;
+      updateRBACUI();
+      renderFormCustomInputs();
+      render();
+    }
+
+    function updateRBACUI() {
+      const adminBtn = document.getElementById('adminSettingsBtn');
+      const adminClearBtn = document.getElementById('adminClearAllBtn');
+      const addTempBtn = document.getElementById('addTempBtn');
+      const gpsBtn = document.getElementById('gpsBtn');
+      const quickAddIndBtn = document.getElementById('quickAddIndBtn');
+      const formInputs = document.querySelectorAll('#waterForm input, #companyName, #recorderName, #customDatetime');
+
+      if (currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'STAFF') {
+        if (currentUserRole === 'SUPER_ADMIN') {
+          adminBtn.classList.remove('hidden');
+          adminClearBtn.classList.remove('hidden');
+        } else {
+          adminBtn.classList.add('hidden');
+          adminClearBtn.classList.add('hidden');
+        }
+        addTempBtn.classList.remove('hidden');
+        if (gpsBtn) gpsBtn.disabled = false;
+        if (quickAddIndBtn) quickAddIndBtn.disabled = false;
+        formInputs.forEach(input => input.disabled = false);
+
+      } else if (currentUserRole === 'VIEWER') {
+        adminBtn.classList.add('hidden');
+        adminClearBtn.classList.add('hidden');
+        addTempBtn.classList.add('hidden');
+        if (gpsBtn) gpsBtn.disabled = true;
+        if (quickAddIndBtn) quickAddIndBtn.disabled = true;
+        formInputs.forEach(input => input.disabled = true);
+      }
+    }
+
+    function initMap() {
+      const streetMap = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 18, minZoom: 5, noWrap: true, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '&copy; Google Maps'
+      });
+
+      const satelliteMap = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+        maxZoom: 18, minZoom: 5, noWrap: true, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '&copy; Google Maps Satellite'
+      });
+
+      const terrainMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        maxZoom: 17, minZoom: 5, attribution: 'Map data: &copy; OpenStreetMap'
+      });
+
+      map = L.map('map', { minZoom: 5, maxZoom: 18, layers: [streetMap] }).setView([18.5, 103.5], 6);
+
+      const baseMaps = {
+        "🗺️ ແຜນທີ່ถนน (Street)": streetMap,
+        "🛰️ ดาวเทียม (Satellite)": satelliteMap,
+        "⛰️ ภูมิประเทศ (TopoMap)": terrainMap
+      };
+
+      L.control.layers(baseMaps).addTo(map);
+
+      const fullscreenControl = L.control({ position: 'topleft' });
+      fullscreenControl.onAdd = function () {
+        const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        div.innerHTML = `<a href="#" title="ขยายเต็มจอ" style="background-color: #fff; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; text-decoration: none; color: #333;">⛶</a>`;
+        div.onclick = function (e) {
+          e.preventDefault();
+          toggleMapFullscreen();
+        };
+        return div;
+      };
+      fullscreenControl.addTo(map);
+
+      markersGroup = L.layerGroup().addTo(map);
+      setTimeout(() => { map.invalidateSize(); }, 300);
+    }
+
+    function toggleMapFullscreen() {
+      const mapElem = document.getElementById('map');
+      if (!document.fullscreenElement) {
+        if (mapElem.requestFullscreen) mapElem.requestFullscreen();
+        else if (mapElem.webkitRequestFullscreen) mapElem.webkitRequestFullscreen();
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+      }
+    }
+
+    document.addEventListener('fullscreenchange', () => {
+      setTimeout(() => { if (map) map.invalidateSize(); }, 200);
+    });
+
+    function switchConfigTab(tabName) {
+      ['indicators', 'thresholds'].forEach(t => {
+        document.getElementById(`tabContent-${t}`).classList.add('hidden');
+        document.getElementById(`tabBtn-${t}`).className = "py-2 px-3 border-b-2 border-transparent text-slate-500";
+      });
+      document.getElementById(`tabContent-${tabName}`).classList.remove('hidden');
+      document.getElementById(`tabBtn-${tabName}`).className = "py-2 px-3 border-b-2 border-sky-600 text-sky-600 font-bold";
+      if (tabName === 'thresholds') renderThresholdFields();
+    }
+
+    function toggleSettingsModal() {
+      if (currentUserRole !== 'SUPER_ADMIN') return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+      document.getElementById('settingsModal').classList.toggle('hidden');
+      renderSettingsList();
+      renderThresholdFields();
+    }
+
+    function renderThresholdFields() {
+      cleanOrphanedThresholds();
+      const container = document.getElementById('dynamicThresholdsContainer');
+      let html = '';
+
+      if (customIndicators.length === 0) {
+        container.innerHTML = `<p class="col-span-2 text-center text-slate-400 py-4">ກະລຸນາເພີ່ມ Indicator ໃນແທັບแรกก่อน</p>`;
+        return;
+      }
+
+      customIndicators.forEach(i => {
+        const minVal = sysThresholds[`cfg_${i.key}_min`] ?? '';
+        const maxVal = sysThresholds[`cfg_${i.key}_max`] ?? '';
+        const displayName = i.name + (i.unit ? ` (${i.unit})` : '');
+
+        html += `
+          <div>
+            <label class="block font-semibold mb-1">${displayName} ຕ່ຳສຸດ (Min)</label>
+            <input type="number" step="any" id="cfg_${i.key}_min" autocomplete="off" value="${minVal}" class="w-full border p-2 rounded">
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">${displayName} ສູງສຸດ (Max)</label>
+            <input type="number" step="any" id="cfg_${i.key}_max" autocomplete="off" value="${maxVal}" class="w-full border p-2 rounded">
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    function saveThresholdConfig() {
+      if (currentUserRole !== 'SUPER_ADMIN') return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+      
+      const newThresholds = {};
+      customIndicators.forEach(i => {
+        const minEl = document.getElementById(`cfg_${i.key}_min`);
+        const maxEl = document.getElementById(`cfg_${i.key}_max`);
+        newThresholds[`cfg_${i.key}_min`] = (minEl && minEl.value !== '') ? parseFloat(minEl.value) : null;
+        newThresholds[`cfg_${i.key}_max`] = (maxEl && maxEl.value !== '') ? parseFloat(maxEl.value) : null;
+      });
+
+      sysThresholds = newThresholds;
+      localStorage.setItem('ENT_THRESHOLDS_CONFIG_V3', JSON.stringify(sysThresholds));
+      Swal.fire({ icon: 'success', title: 'ບັນທຶກເກນເຕືອນໄພຮຽບຮ້ອຍແລ້ວ!' });
+      renderFormCustomInputs();
+      render();
+    }
+
+    function addCustomIndicator() {
+      if (currentUserRole !== 'SUPER_ADMIN') return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+      const name = document.getElementById('newIndName').value.trim();
+      const unit = document.getElementById('newIndUnit').value.trim();
+      if (!name) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາລະບຸຊື່ Indicator!' });
+
+      const key = 'custom_' + Date.now();
+      const newInd = { key, name, unit };
+      
+      customIndicators.push(newInd);
+      masterIndicators.push(newInd);
+
+      localStorage.setItem('ENT_WATER_CONFIG', JSON.stringify(customIndicators));
+      localStorage.setItem('ENT_WATER_CONFIG_MASTER', JSON.stringify(masterIndicators));
+
+      document.getElementById('newIndName').value = '';
+      document.getElementById('newIndUnit').value = '';
+      
+      if (!currentSelectedIndicator) currentSelectedIndicator = key;
+
+      renderSettingsList();
+      renderFormCustomInputs();
+      renderThresholdFields();
+      render();
+    }
+
+    function removeCustomIndicator(key) {
+      if (currentUserRole !== 'SUPER_ADMIN') return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+
+      Swal.fire({
+        title: '⚠️ ຢືນຢັນການລົບ Indicator?',
+        text: 'ເກນເຕືອນໄພ (Thresholds) ຂອງ Indicator ນີ້ຈະຖືກລົບອອກນຳ',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'ຕົກລົງ',
+        cancelButtonText: 'ຍົກເລີກ'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          delete sysThresholds[`cfg_${key}_min`];
+          delete sysThresholds[`cfg_${key}_max`];
+          localStorage.setItem('ENT_THRESHOLDS_CONFIG_V3', JSON.stringify(sysThresholds));
+
+          customIndicators = customIndicators.filter(i => i.key !== key);
+          localStorage.setItem('ENT_WATER_CONFIG', JSON.stringify(customIndicators));
+          
+          if (currentSelectedIndicator === key) {
+            currentSelectedIndicator = customIndicators.length > 0 ? customIndicators[0].key : '';
+          }
+
+          renderSettingsList();
+          renderFormCustomInputs();
+          renderThresholdFields();
+          render();
+
+          Swal.fire({ icon: 'success', title: 'ລົບ Indicator ສຳເລັດ!', timer: 1500, showConfirmButton: false });
+        }
+      });
+    }
+
+    function renderSettingsList() {
+      const list = document.getElementById('customIndicatorsList');
+      list.innerHTML = '';
+      customIndicators.forEach(i => {
+        list.innerHTML += `
+          <li class="flex justify-between items-center bg-slate-50 p-2 rounded border text-xs">
+            <span><strong>${i.name}</strong> (${i.unit || '-'})</span>
+            <button onclick="removeCustomIndicator('${i.key}')" class="text-rose-600 font-bold">ລົບ</button>
+          </li>
+        `;
+      });
+    }
+
+    function renderFormCustomInputs() {
+      const container = document.getElementById('dynamicFormIndicators');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const isDisabled = (currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'STAFF') ? '' : 'disabled';
+
+      if (customIndicators.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-400 text-center py-2 bg-slate-50 rounded-lg border border-dashed border-slate-200">ຍັງບໍ່ມີ Indicators (ກົດເພີ່ມປຸ່ມຂ້າງເທິງ)</p>`;
+        return;
+      }
+
+      customIndicators.forEach(i => {
+        container.innerHTML += `
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">${i.name} ${i.unit ? '(' + i.unit + ')' : ''}</label>
+            <input type="number" step="any" id="input_${i.key}" ${isDisabled} autocomplete="off" class="w-full border p-1.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-sky-500">
+          </div>
+        `;
+      });
+    }
+
+    function evalStatus(customs = {}) {
+      let isAlert = false;
+      customIndicators.forEach(i => {
+        const val = customs[i.key];
+        if (val !== undefined && val !== '-' && val !== '' && !isNaN(val)) {
+          const minVal = sysThresholds[`cfg_${i.key}_min`];
+          const maxVal = sysThresholds[`cfg_${i.key}_max`];
+          if (minVal !== null && minVal !== undefined && val < minVal) isAlert = true;
+          if (maxVal !== null && maxVal !== undefined && val > maxVal) isAlert = true;
+        }
+      });
+      return isAlert ? { text: '🚨 Alert', isAlert: true, class: 'bg-rose-100 text-rose-800' } : { text: '✅ Normal', isAlert: false, class: 'bg-emerald-100 text-emerald-800' };
+    }
+
+    /* --- BATCH SAVE & ACCORDION SYSTEM --- */
+
+    function addTempStation(e) {
+      e.preventDefault();
+      if (currentUserRole === 'VIEWER') return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+
+      const customValues = {};
+      customIndicators.forEach(i => {
+        const inputEl = document.getElementById(`input_${i.key}`);
+        const val = inputEl ? inputEl.value : '';
+        customValues[i.key] = val !== '' ? parseFloat(val) : '-';
+      });
+
+      const stationData = {
+        id: Date.now(),
+        code: document.getElementById('code').value,
+        name: document.getElementById('name').value,
+        province: document.getElementById('province').value,
+        lat: parseFloat(document.getElementById('lat').value),
+        lng: parseFloat(document.getElementById('lng').value),
+        customs: customValues,
+        status: evalStatus(customValues)
+      };
+
+      tempStations.push(stationData);
+      renderTempList();
+
+      document.getElementById('code').value = '';
+      document.getElementById('name').value = '';
+      customIndicators.forEach(i => {
+        const el = document.getElementById(`input_${i.key}`);
+        if (el) el.value = '';
+      });
+    }
+
+    function renderTempList() {
+      const container = document.getElementById('tempListContainer');
+      const countEl = document.getElementById('tempCount');
+      const saveBtn = document.getElementById('saveBatchBtn');
+
+      countEl.innerText = tempStations.length;
+      if (tempStations.length > 0) {
+        saveBtn.classList.remove('hidden');
+        container.innerHTML = tempStations.map((st, idx) => `
+          <div class="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+            <div>
+              <span class="font-mono font-bold text-indigo-600">${st.code}</span> - <span class="font-medium text-slate-800">${st.name}</span>
+            </div>
+            <button onclick="removeTempStation(${idx})" class="text-rose-500 font-bold hover:text-rose-700 px-1">✕</button>
+          </div>
+        `).join('');
+      } else {
+        saveBtn.classList.add('hidden');
+        container.innerHTML = `<p class="text-slate-400 text-center py-3">ຍັງບໍ່ມີຂໍ້ມູນສະຖານີ</p>`;
+      }
+    }
+
+    function removeTempStation(index) {
+      tempStations.splice(index, 1);
+      renderTempList();
+    }
+
+    function saveAllBatch() {
+      if (currentUserRole === 'VIEWER') return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+
+      const companyName = document.getElementById('companyName').value.trim();
+      const recorderName = document.getElementById('recorderName').value.trim();
+
+      if (!companyName) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາລະບຸຊື່ບໍລິສັດ / ຫົວຂໍ້ຫຼັກ!' });
+      if (!recorderName) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາລະບຸຊື່ຜູ້ບັນທຶກ!' });
+      if (tempStations.length === 0) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາເພີ່ມຢ່າງນ້ອຍ 1 ສະຖານີ!' });
+
+      const inputDatetime = document.getElementById('customDatetime').value;
+      const recordDate = inputDatetime ? new Date(inputDatetime).toLocaleString('lo-LA') : new Date().toLocaleString('lo-LA');
+
+      const batchRecord = {
+        id: Date.now(),
+        companyName: companyName,
+        date: recordDate,
+        recordedBy: recorderName,
+        stations: tempStations
+      };
+
+      db.ref('water_records').push(batchRecord).then(() => {
+        db.ref('activity_logs').push({
+          action: 'CREATE',
+          itemCode: `${companyName} (${tempStations.length} ສະຖານີ)`,
+          performedBy: recorderName,
+          timestamp: new Date().toLocaleString('lo-LA'),
+          userRole: currentUserRole
+        });
+
+        tempStations = [];
+        document.getElementById('companyName').value = '';
+        document.getElementById('waterForm').reset();
+        renderTempList();
+
+        Swal.fire({
+          icon: 'success',
+          title: 'ບັນທຶກຂໍ້ມູນທັງໝົດສຳເລັດ!',
+          text: 'ບັນທຶກຂໍ້ມູນເຂົ້າຖານຂໍ້ມູນຮຽບຮ້ອຍແລ້ວ',
+          timer: 1800,
+          showConfirmButton: false
+        });
+      });
+    }
+
+    function toggleRow(key) {
+      expandedRows[key] = !expandedRows[key];
+      render();
+    }
+
+    function updateKPIs(filteredBatches) {
+      document.getElementById('kpiTotal').innerText = filteredBatches.length;
+      let totalNormal = 0;
+      let totalAlert = 0;
+
+      filteredBatches.forEach(b => {
+        const stations = b.stations || [b];
+        stations.forEach(st => {
+          if (st.status && st.status.isAlert) totalAlert++;
+          else totalNormal++;
+        });
+      });
+
+      document.getElementById('kpiNormal').innerText = totalNormal;
+      document.getElementById('kpiAlert').innerText = totalAlert;
+    }
+
+    function render() {
+      cleanOrphanedThresholds();
+      markersGroup.clearLayers();
+      const tbody = document.getElementById('dataTable');
+      tbody.innerHTML = '';
+
+      const searchKeyword = document.getElementById('searchInput').value.toLowerCase();
+      const statusVal = document.getElementById('statusFilter').value;
+
+      const filteredData = waterData.filter(item => {
+        const company = (item.companyName || item.name || '').toLowerCase();
+        const recorder = (item.recordedBy || '').toLowerCase();
+        const stations = item.stations || [item];
+        
+        const matchSearch = company.includes(searchKeyword) || recorder.includes(searchKeyword) || 
+                            stations.some(s => (s.code || '').toLowerCase().includes(searchKeyword) || (s.name || '').toLowerCase().includes(searchKeyword));
+        
+        const matchStatus = statusVal === 'ALL' || stations.some(s => {
+          const isAlert = s.status ? s.status.isAlert : false;
+          return (statusVal === 'NORMAL' && !isAlert) || (statusVal === 'ALERT' && isAlert);
+        });
+
+        return matchSearch && matchStatus;
+      });
+
+      updateKPIs(filteredData);
+      document.getElementById('stationCount').innerText = `${filteredData.length} Records`;
+
+      const canDelete = currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'STAFF';
+
+      // ຕັ້ງ Header ຕາຕະລາງພ້ອມຄໍຣັມ "ລຳດັບ"
+      document.getElementById('tableHeader').innerHTML = `
+        <th class="p-3 text-center">ລູກສອນ</th>
+        <th class="p-3 text-center w-12">ລຳດັບ</th>
+        <th class="p-3">ຊື່ບໍລິສັດ / ຫົວຂໍ້ຫຼັກ</th>
+        <th class="p-3 text-center">ຈຳນວນສະຖານີ</th>
+        <th class="p-3">ເວລາທີ່ບັນທຶກ</th>
+        <th class="p-3">ຜູ້ບັນທຶກ</th>
+        ${canDelete ? `<th class="p-3 text-center no-print">ຈັດການ</th>` : ''}
+      `;
+
+      const validLaosBounds = [];
+      const flatStationsForChart = [];
+
+      filteredData.forEach((item, index) => {
+        const company = item.companyName || item.name || 'ບໍ່ລະບຸບໍລິສັດ';
+        const stations = item.stations || [item];
+        const isExpanded = expandedRows[item.fbKey] || false;
+
+        stations.forEach(st => {
+          flatStationsForChart.push({ ...st, companyName: company });
+          if (st.lat && st.lng) {
+            const currentIcon = (st.status && st.status.isAlert) ? alertIcon : normalIcon;
+            const marker = L.marker([st.lat, st.lng], { icon: currentIcon }).addTo(markersGroup);
+
+            let customPopupHTML = '';
+            customIndicators.forEach(i => {
+              const val = st.customs ? st.customs[i.key] : undefined;
+              if (val !== undefined && val !== '-' && val !== '' && val !== null) {
+                customPopupHTML += `<b>${i.name}:</b> ${val} ${i.unit || ''}<br>`;
+              }
+            });
+
+            marker.bindPopup(`
+              <div style="font-family: sans-serif; font-size: 12px; line-height: 1.5;">
+                <b style="font-size: 14px; color: #4f46e5;">🏢 ${company}</b><br>
+                <b style="font-size: 13px; color: #0f172a;">📍 ${st.name} (${st.code})</b><br>
+                <b>ແຂວງ:</b> ${st.province}<br>
+                ${customPopupHTML}
+                <b>ສະຖານະ:</b> <span style="font-weight: bold; color: ${st.status && st.status.isAlert ? '#dc2626' : '#16a34a'};">${st.status ? st.status.text : '✅ Normal'}</span>
+              </div>
+            `);
+
+            if (st.lat >= 13 && st.lat <= 23 && st.lng >= 100 && st.lng <= 108) {
+              validLaosBounds.push([st.lat, st.lng]);
+            }
+          }
+        });
+
+        // Render Master Row (ພ້ອມເລກລຳດັບ)
+        tbody.innerHTML += `
+          <tr class="bg-slate-50 font-semibold border-b border-slate-200 hover:bg-indigo-50/50 transition cursor-pointer select-none" onclick="toggleRow('${item.fbKey}')">
+            <td class="p-3 text-center text-indigo-600 font-bold text-base">${isExpanded ? '▼' : '▶'}</td>
+            <td class="p-3 text-center font-bold text-slate-500">${index + 1}</td>
+            <td class="p-3 text-indigo-950 font-bold flex items-center gap-2">
+              🏢 ${company}
+            </td>
+            <td class="p-3 text-center"><span class="bg-indigo-100 text-indigo-800 text-xs px-2.5 py-1 rounded-full font-bold">${stations.length} ສະຖານີ</span></td>
+            <td class="p-3 text-xs text-slate-500">${item.date || '-'}</td>
+            <td class="p-3 text-xs font-semibold text-slate-700">${item.recordedBy || 'ບໍ່ລະບຸ'}</td>
+            ${canDelete ? `
+              <td class="p-3 text-center no-print" onclick="event.stopPropagation()">
+                <button onclick="deleteItem('${item.fbKey}', '${company}')" class="bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs px-2.5 py-1 rounded-lg border border-rose-200 transition">🗑️ ລົບທັງໝົດ</button>
+              </td>
+            ` : ''}
+          </tr>
+        `;
+
+        // Render Expanded Detail Rows
+        if (isExpanded) {
+          stations.forEach((st, stIdx) => {
+            let customColsHTML = customIndicators.map(i => {
+              const val = st.customs ? (st.customs[i.key] ?? '-') : '-';
+              return `<span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200"><b>${i.name}:</b> ${val} ${i.unit || ''}</span>`;
+            }).join(' ');
+
+            tbody.innerHTML += `
+              <tr class="bg-white text-xs border-b border-slate-100 hover:bg-sky-50/30">
+                <td class="p-2"></td>
+                <td colspan="6" class="p-3 pl-8">
+                  <div class="flex flex-wrap items-center gap-3 mb-2">
+                    <span class="font-bold text-sky-700 text-sm">↳ ສະຖານີທີ ${stIdx + 1}: [${st.code}] ${st.name}</span>
+                    <span class="text-slate-500 font-medium">(${st.province})</span>
+                    <span class="text-slate-400 font-mono text-[11px]">GIS: ${st.lat}, ${st.lng}</span>
+                    
+                    ${canDelete ? `
+                      <button onclick="deleteSubStation('${item.fbKey}', ${stIdx}, '${st.name}')" class="ml-auto bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-[11px] px-2 py-1 rounded border border-rose-200 transition">
+                        🗑️ ລົບສະຖານີນີ້
+                      </button>
+                    ` : ''}
+                  </div>
+
+                  <div class="flex items-center gap-2 flex-wrap">
+                    ${customColsHTML}
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${st.status ? st.status.class : 'bg-emerald-100 text-emerald-800'}">${st.status ? st.status.text : '✅ Normal'}</span>
+                  </div>
+                </td>
+              </tr>
+            `;
+          });
+        }
+      });
+
+      if (validLaosBounds.length > 0) {
+        map.fitBounds(validLaosBounds, { padding: [30, 30], maxZoom: 12 });
+      } else {
+        map.setView([18.5, 103.5], 6);
+      }
+
+      initApexChart(flatStationsForChart);
+    }
+
+    function deleteSubStation(fbKey, stationIndex, stationName) {
+      if (currentUserRole !== 'SUPER_ADMIN' && currentUserRole !== 'STAFF') {
+        return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+      }
+
+      Swal.fire({
+        title: `⚠️ ຢືນຢັນລົບສະຖານີ "${stationName}"?`,
+        text: 'ກະລຸນາລະບຸຊື່ຜູ້ລົບຂໍ້ມູນເພື່ອຢືນຢັນ:',
+        input: 'text',
+        inputPlaceholder: 'ພິມຊື່ຜູ້ລຶບຢູ່ທີ່ນີ້...',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'ຕົກລົງ',
+        cancelButtonText: 'ຍົກເລີກ',
+        inputValidator: (value) => {
+          if (!value || !value.trim()) {
+            return 'ກະລຸນາປ້ອນຊື່ຜູ້ລຶບກ່ອນ!'
+          }
+        }
+      }).then((result) => {
+        if (result.isConfirmed) {
+          const removerName = result.value.trim();
+          const item = waterData.find(d => d.fbKey === fbKey);
+
+          if (item && item.stations) {
+            if (item.stations.length > 1) {
+              item.stations.splice(stationIndex, 1);
+              
+              db.ref('water_records/' + fbKey + '/stations').set(item.stations).then(() => {
+                db.ref('activity_logs').push({
+                  action: 'DELETE_STATION',
+                  itemCode: `${item.companyName} -> ${stationName}`,
+                  performedBy: removerName,
+                  timestamp: new Date().toLocaleString('lo-LA'),
+                  userRole: currentUserRole
+                });
+
+                Swal.fire({
+                  title: 'ລົບສະຖານີສຳເລັດ!',
+                  text: `ດໍາເນີນການໂດຍ: ${removerName}`,
+                  icon: 'success',
+                  timer: 1500,
+                  showConfirmButton: false
+                });
+              });
+            } else {
+              deleteItem(fbKey, item.companyName);
+            }
+          }
+        }
+      });
+    }
+
+    function deleteItem(fbKey, codeName) {
+      if (currentUserRole !== 'SUPER_ADMIN' && currentUserRole !== 'STAFF') {
+        return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+      }
+
+      Swal.fire({
+        title: `⚠️ ຢືນຢັນການລົບ ${codeName}?`,
+        text: 'ກະລຸນາລະບຸຊື່ຜູ້ລົບຂໍ້ມູນເພື່ອຢືນຢັນ:',
+        input: 'text',
+        inputPlaceholder: 'ພິມຊື່ຜູ້ລຶບຢູ່ທີ່ນີ້...',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'ຕົກລົງ',
+        cancelButtonText: 'ຍົກເລີກ',
+        inputValidator: (value) => {
+          if (!value || !value.trim()) {
+            return 'ກະລຸນາປ້ອນຊື່ຜູ້ລຶບກ່ອນ!'
+          }
+        }
+      }).then((result) => {
+        if (result.isConfirmed) {
+          const removerName = result.value.trim();
+
+          db.ref('activity_logs').push({
+            action: 'DELETE',
+            itemCode: codeName || fbKey,
+            performedBy: removerName,
+            timestamp: new Date().toLocaleString('lo-LA'),
+            userRole: currentUserRole
+          });
+
+          db.ref('water_records/' + fbKey).remove().then(() => {
+            Swal.fire({
+              title: 'ລຶບຂໍ້ມູນສຳເລັດ!',
+              text: `ດໍາເນີນການໂດຍ: ${removerName}`,
+              icon: 'success',
+              confirmButtonText: 'ຕົກລົງ'
+            });
+          });
+        }
+      });
+    }
+
+    function clearAllData() {
+      if (currentUserRole !== 'SUPER_ADMIN') {
+        return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+      }
+
+      Swal.fire({
+        title: '💣 ຢືນຢັນລົບຂໍ້ມູນທັງໝົດ?',
+        text: 'ຂໍ້ມູນທັງໝົດຈະຖືກລົບຖາວອນ! ກະລຸນາລະບຸຊື່ຜູ້ລົບ:',
+        input: 'text',
+        inputPlaceholder: 'ພິມຊື່ຜູ້ລຶບຢູ່ທີ່ນີ້...',
+        icon: 'error',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'ຢືນຢັນລົບທັງໝົດ',
+        cancelButtonText: 'ຍົກເລີກ',
+        inputValidator: (value) => {
+          if (!value || !value.trim()) {
+            return 'ກະລຸນາປ້ອນຊື່ຜູ້ລຶບກ່ອນ!'
+          }
+        }
+      }).then((result) => {
+        if (result.isConfirmed) {
+          const removerName = result.value.trim();
+
+          db.ref('activity_logs').push({
+            action: 'CLEAR_ALL',
+            performedBy: removerName,
+            timestamp: new Date().toLocaleString('lo-LA'),
+            userRole: currentUserRole
+          });
+
+          db.ref('water_records').remove().then(() => {
+            Swal.fire({
+              title: 'ລ້າງຂໍ້ມູນທັງໝົດສຳເລັດ!',
+              text: `ດໍາເນີນການໂດຍ: ${removerName}`,
+              icon: 'success',
+              confirmButtonText: 'ຕົກລົງ'
+            });
+          });
+        }
+      });
+    }
+
+    function renderChartIndicatorTabs() {
+      const container = document.getElementById('chartIndicatorTabs');
+      if (!container) return;
+      let html = '';
+
+      if (customIndicators.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+
+      customIndicators.forEach(i => {
+        const isActive = currentSelectedIndicator === i.key;
+        html += `<button type="button" onclick="switchChartIndicator('${i.key}')" id="chartBtn-${i.key}" class="px-2.5 py-1 rounded-lg font-bold ${isActive ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}">${i.name}</button>`;
+      });
+      container.innerHTML = html;
+    }
+
+    function switchChartIndicator(indKey) {
+      currentSelectedIndicator = indKey;
+      renderChartIndicatorTabs();
+      render();
+    }
+
+    function initApexChart(flatStations) {
+      const chartContainer = document.getElementById('apexChartContainer');
+      if (!chartContainer) return;
+      chartContainer.innerHTML = '';
+      renderChartIndicatorTabs();
+
+      if (customIndicators.length === 0) return;
+
+      if (!currentSelectedIndicator && customIndicators.length > 0) {
+        currentSelectedIndicator = customIndicators[0].key;
+      }
+
+      const chartData = [...flatStations].reverse().slice(-15);
+      const categories = chartData.map(d => `${d.name || ''} (${d.code || ''})`);
+      
+      const safeParse = (val) => {
+        const num = parseFloat(val);
+        return isNaN(num) ? 0 : num;
+      };
+
+      let seriesName = 'Value';
+      let seriesColor = '#6366f1';
+      let seriesValues = [];
+
+      const customObj = customIndicators.find(i => i.key === currentSelectedIndicator);
+      if (customObj) {
+        seriesName = `${customObj.name} (${customObj.unit || ''})`;
+        seriesValues = chartData.map(d => {
+          if (!d.customs || d.customs[customObj.key] === undefined || d.customs[customObj.key] === '-') {
+            return 0;
+          }
+          return safeParse(d.customs[customObj.key]);
+        });
+      }
+
+      const options = {
+        chart: {
+          type: 'area',
+          height: 220,
+          toolbar: { show: true, tools: { zoom: true, zoomin: true, zoomout: true, pan: true, reset: true } },
+          animations: { enabled: true, easing: 'easeinout', speed: 800 }
+        },
+        series: [{ name: seriesName, data: seriesValues }],
+        stroke: { curve: 'smooth', width: 3 },
+        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.3 } },
+        colors: [seriesColor],
+        xaxis: { categories: categories, labels: { style: { colors: '#64748b' } } },
+        yaxis: { labels: { style: { colors: '#64748b' } } },
+        grid: { borderColor: '#e2e8f0' },
+        tooltip: { theme: 'light' }
+      };
+
+      if (apexChart) {
+        try { apexChart.destroy(); } catch(e) {}
+      }
+      apexChart = new ApexCharts(chartContainer, options);
+      apexChart.render();
+    }
+
+    function exportCSV() {
+      if(waterData.length === 0) return Swal.fire({ icon: 'info', title: 'ບໍ່ມີຂໍ້ມູນ' });
+      
+      let customHead = customIndicators.map(i => i.name).join(',');
+      let csv = `\uFEFFNo.,Company,Station Code,Station Name,Province,Latitude,Longitude,${customHead},Status,Recorded By,Timestamp\n`;
+      
+      let count = 1;
+      waterData.forEach((r) => {
+        const company = r.companyName || r.name || 'ບໍ່ລະບຸ';
+        const stations = r.stations || [r];
+        stations.forEach(st => {
+          let cVals = customIndicators.map(i => st.customs ? (st.customs[i.key] ?? '-') : '-').join(',');
+          csv += `${count++},"${company}","${st.code}","${st.name}","${st.province}",${st.lat},${st.lng},${cVals},"${st.status ? st.status.text : 'Normal'}","${r.recordedBy || 'ບໍ່ລະບຸ'}","${r.date}"\n`;
+        });
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `DWR_Water_Quality_Batch_Export_${Date.now()}.csv`;
+      a.click();
+    }
+
+    async function downloadPDFReport() {
+      if(waterData.length === 0) return Swal.fire({ icon: 'info', title: 'ບໍ່ມີຂໍ້ມູນສຳລັບການອອກລາຍງານ PDF!' });
+      const btn = document.getElementById('pdfBtn');
+      btn.innerText = '⏳ ກຳລັງສ້າງ PDF...';
+      btn.disabled = true;
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'pt', 'a4');
+      const element = document.getElementById('printableTableContainer');
+      const canvas = await html2canvas(element, { scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+
+      pdf.setFontSize(16);
+      pdf.text('DEPARTMENT OF WATER RESOURCES REPORT', 40, 40);
+      pdf.setFontSize(10);
+      pdf.text(`Generated Date: ${new Date().toLocaleString()}`, 40, 55);
+      pdf.text(`Total Records: ${waterData.length}`, 40, 70);
+      pdf.line(40, 80, 555, 80);
+
+      const imgWidth = 515;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 40, 90, imgWidth, imgHeight);
+
+      pdf.save(`Water_Quality_Report_${Date.now()}.pdf`);
+
+      btn.innerText = '📄 ດາວໂຫລດ PDF';
+      btn.disabled = false;
+    }
+
+    window.onload = () => {
+      initMap();
+      document.getElementById('roleSelector').value = 'VIEWER';
+      updateRBACUI();
+      if (customIndicators.length > 0) currentSelectedIndicator = customIndicators[0].key;
+      cleanOrphanedThresholds();
+      renderFormCustomInputs();
+      renderThresholdFields();
+      listenToFirebase();
+    };
+  </script>
+</body>
+</html>
