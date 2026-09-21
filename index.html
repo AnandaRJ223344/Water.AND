@@ -53,6 +53,33 @@
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800 pb-12">
 
+  <!-- ==================== LOGIN OVERLAY SCREEN (LAO VERSION) ==================== -->
+  <div id="loginScreen" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl border border-slate-700 space-y-6">
+      <div class="text-center space-y-2">
+        <div class="text-5xl mb-2">🌊</div>
+        <h2 class="text-xl font-bold text-slate-800">ເຂົ້າสู่ລະບົບຕິດຕາມຄຸນນະພາບນ້ຳ</h2>
+        <p class="text-xs text-slate-500">Department of Water Resources Enterprise Platform</p>
+      </div>
+
+      <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">ລະຫັດຜ່ານສ່ວນທີ 1 (Password 1)</label>
+          <input type="password" id="topPass" required autocomplete="off" class="w-full border p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50" placeholder="ກະລຸນາປ້ອນລະຫັດຜ່ານສ່ວນທີ 1...">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">ລະຫັດຜ່ານສ່ວນທີ 2 (Password 2)</label>
+          <input type="password" id="bottomPass" required autocomplete="off" class="w-full border p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50" placeholder="ກະລຸນາປ້ອນລະຫັດຜ່ານສ່ວນທີ 2...">
+        </div>
+
+        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg transition duration-200">
+          🔓 ເຂົ້າสู่ລະບົບ
+        </button>
+      </form>
+    </div>
+  </div>
+
   <!-- Navigation -->
   <nav class="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-50 shadow-md">
     <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
@@ -66,7 +93,7 @@
 
       <div class="flex items-center gap-2 flex-wrap">
         <div class="bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-2">
-          <span class="text-xs text-slate-400">ຍົດຜູ້ໃຊ້:</span>
+          <span class="text-xs text-slate-400">ສິດຜູ້ໃຊ້:</span>
           <select id="roleSelector" onchange="changeUserRole(this.value)" class="text-xs font-bold bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white outline-none cursor-pointer">
             <option value="SUPER_ADMIN">👑 Super Admin (ສູງສຸດ)</option>
             <option value="STAFF">🛠️ Staff (ລະດັບກາງ)</option>
@@ -88,6 +115,10 @@
 
         <button onclick="downloadPDFReport()" id="pdfBtn" class="bg-rose-700 hover:bg-rose-600 text-white text-xs px-3 py-2 rounded-lg font-medium transition flex items-center gap-1 shadow">
           📄 ດາວໂຫລດ PDF
+        </button>
+
+        <button onclick="logout()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-2 rounded-lg font-medium transition flex items-center gap-1 shadow">
+          🚪 ອອກຈາກລະບົບ
         </button>
       </div>
     </div>
@@ -278,8 +309,8 @@
               <th class="p-2.5 border-b">ເວລາ</th>
               <th class="p-2.5 border-b">ການກະທຳ (Action)</th>
               <th class="p-2.5 border-b">ລະຫັດ/ຂໍ້ມູນ</th>
-              <th class="p-2.5 border-b">ຜູ້ดำเนินการ (Performed By)</th>
-              <th class="p-2.5 border-b">ຍົດ (Role)</th>
+              <th class="p-2.5 border-b">ຜູ້ດຳເນີນການ (Performed By)</th>
+              <th class="p-2.5 border-b">ສິດຜູ້ໃຊ້ (Role)</th>
             </tr>
           </thead>
           <tbody id="logsTableBody" class="divide-y divide-slate-100">
@@ -348,6 +379,49 @@
     let map, markersGroup;
     let apexChart = null;
     let currentSelectedIndicator = '';
+
+    /* --- LOGIN SYSTEM LOGIC (LAO NOTIFICATION) --- */
+    function handleLogin(e) {
+      e.preventDefault();
+      const topPass = document.getElementById('topPass').value;
+      const bottomPass = document.getElementById('bottomPass').value;
+
+      if (topPass === 'Water.21' && bottomPass === 'wat') {
+        sessionStorage.setItem('isLoggedIn', 'true');
+        document.getElementById('loginScreen').classList.add('hidden');
+        Swal.fire({
+          icon: 'success',
+          title: 'ເຂົ້າสู่ລະບົບສຳເລັດ!',
+          timer: 1500,
+          showConfirmButton: false
+        });
+        setTimeout(() => {
+          if (map) map.invalidateSize();
+        }, 300);
+      } else {
+        Swal.fire({
+          icon: 'error',
+          title: 'ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ!',
+          text: 'ກະລຸນາກວດສອບລະຫັດຜ່ານສ່ວນທີ 1 ແລະ ສ່ວນທີ 2 ໃໝ່ອີກຄັ້ງ'
+        });
+      }
+    }
+
+    function checkAuthStatus() {
+      const isLoggedIn = sessionStorage.getItem('isLoggedIn');
+      if (isLoggedIn === 'true') {
+        document.getElementById('loginScreen').classList.add('hidden');
+      } else {
+        document.getElementById('loginScreen').classList.remove('hidden');
+      }
+    }
+
+    function logout() {
+      sessionStorage.removeItem('isLoggedIn');
+      document.getElementById('topPass').value = '';
+      document.getElementById('bottomPass').value = '';
+      checkAuthStatus();
+    }
 
     const normalIcon = L.divIcon({
       className: 'custom-pin-normal',
@@ -423,7 +497,7 @@
       }
     }
 
-    /* --- ຟັງຊັນເພີ່ມໂຕຊີ້ວັດສະເພາະຈຸດໂດຍตรงຈາກຟອມ (Quick Add Indicator) --- */
+    /* --- Quick Add Indicator Prompt (LAO) --- */
     function quickAddIndicatorPrompt() {
       if (currentUserRole === 'VIEWER') {
         return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!', text: 'ຜູ້ໃຊ້ທົ່ວໄປບໍ່ສາມາດເພີ່ມໂຕຊີ້ວັດໄດ້' });
@@ -556,7 +630,7 @@
         const { value: pin } = await Swal.fire({
           title: '🔒 ກະລຸນາໃສ່ລະຫັດຜ່ານ Super Admin:',
           input: 'password',
-          inputPlaceholder: 'ใส่รหัสผ่าน...',
+          inputPlaceholder: 'ກະລຸນາປ້ອນລະຫັດຜ່ານ...',
           showCancelButton: true,
           confirmButtonText: 'ຕົກລົງ',
           cancelButtonText: 'ຍົກເລີກ'
@@ -571,7 +645,7 @@
         const { value: pin } = await Swal.fire({
           title: '🔒 ກະລຸນາໃສ່ລະຫັດຜ່ານ Staff:',
           input: 'password',
-          inputPlaceholder: 'ใส่รหัสผ่าน...',
+          inputPlaceholder: 'ກະລຸນາປ້ອນລະຫັດຜ່ານ...',
           showCancelButton: true,
           confirmButtonText: 'ຕົກລົງ',
           cancelButtonText: 'ຍົກເລີກ'
@@ -637,9 +711,9 @@
       map = L.map('map', { minZoom: 5, maxZoom: 18, layers: [streetMap] }).setView([18.5, 103.5], 6);
 
       const baseMaps = {
-        "🗺️ ແຜນທີ່ถนน (Street)": streetMap,
-        "🛰️ ดาวเทียม (Satellite)": satelliteMap,
-        "⛰️ ภูมิประเทศ (TopoMap)": terrainMap
+        "🗺️ ແຜນທີ່ຖະໜົນ (Street)": streetMap,
+        "🛰️ ດາວເທຽມ (Satellite)": satelliteMap,
+        "⛰️ ພູມປະເທດ (TopoMap)": terrainMap
       };
 
       L.control.layers(baseMaps).addTo(map);
@@ -647,7 +721,7 @@
       const fullscreenControl = L.control({ position: 'topleft' });
       fullscreenControl.onAdd = function () {
         const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-        div.innerHTML = `<a href="#" title="ขยายเต็มจอ" style="background-color: #fff; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; text-decoration: none; color: #333;">⛶</a>`;
+        div.innerHTML = `<a href="#" title="ຂະຫຍາຍເຕັມຈໍ" style="background-color: #fff; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; text-decoration: none; color: #333;">⛶</a>`;
         div.onclick = function (e) {
           e.preventDefault();
           toggleMapFullscreen();
@@ -697,7 +771,7 @@
       let html = '';
 
       if (customIndicators.length === 0) {
-        container.innerHTML = `<p class="col-span-2 text-center text-slate-400 py-4">ກະລຸນາເພີ່ມ Indicator ໃນແທັບแรกก่อน</p>`;
+        container.innerHTML = `<p class="col-span-2 text-center text-slate-400 py-4">ກະລຸນາເພີ່ມ Indicator ໃນແທັບທຳອິດກ່ອນ</p>`;
         return;
       }
 
@@ -1007,7 +1081,6 @@
 
       const canDelete = currentUserRole === 'SUPER_ADMIN' || currentUserRole === 'STAFF';
 
-      // ຕັ້ງ Header ຕາຕະລາງພ້ອມຄໍຣັມ "ລຳດັບ"
       document.getElementById('tableHeader').innerHTML = `
         <th class="p-3 text-center">ລູກສອນ</th>
         <th class="p-3 text-center w-12">ລຳດັບ</th>
@@ -1056,7 +1129,6 @@
           }
         });
 
-        // Render Master Row (ພ້ອມເລກລຳດັບ)
         tbody.innerHTML += `
           <tr class="bg-slate-50 font-semibold border-b border-slate-200 hover:bg-indigo-50/50 transition cursor-pointer select-none" onclick="toggleRow('${item.fbKey}')">
             <td class="p-3 text-center text-indigo-600 font-bold text-base">${isExpanded ? '▼' : '▶'}</td>
@@ -1075,7 +1147,6 @@
           </tr>
         `;
 
-        // Render Expanded Detail Rows
         if (isExpanded) {
           stations.forEach((st, stIdx) => {
             let customColsHTML = customIndicators.map(i => {
@@ -1160,7 +1231,7 @@
 
                 Swal.fire({
                   title: 'ລົບສະຖານີສຳເລັດ!',
-                  text: `ດໍາເນີນການໂດຍ: ${removerName}`,
+                  text: `ດຳເນີນການໂດຍ: ${removerName}`,
                   icon: 'success',
                   timer: 1500,
                   showConfirmButton: false
@@ -1210,7 +1281,7 @@
           db.ref('water_records/' + fbKey).remove().then(() => {
             Swal.fire({
               title: 'ລຶບຂໍ້ມູນສຳເລັດ!',
-              text: `ດໍາເນີນການໂດຍ: ${removerName}`,
+              text: `ດຳເນີນການໂດຍ: ${removerName}`,
               icon: 'success',
               confirmButtonText: 'ຕົກລົງ'
             });
@@ -1254,7 +1325,7 @@
           db.ref('water_records').remove().then(() => {
             Swal.fire({
               title: 'ລ້າງຂໍ້ມູນທັງໝົດສຳເລັດ!',
-              text: `ດໍາເນີນການໂດຍ: ${removerName}`,
+              text: `ດຳເນີນການໂດຍ: ${removerName}`,
               icon: 'success',
               confirmButtonText: 'ຕົກລົງ'
             });
@@ -1398,6 +1469,7 @@
     }
 
     window.onload = () => {
+      checkAuthStatus();
       initMap();
       document.getElementById('roleSelector').value = 'VIEWER';
       updateRBACUI();
