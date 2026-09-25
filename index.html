@@ -369,6 +369,9 @@
 
     let currentUserRole = 'VIEWER'; 
     let waterData = [];
+    // NOTE: localStorage values below are only a fallback for the very first paint.
+    // The real source of truth is Firebase (system_config/*), synced in listenToFirebase().
+    // This is what makes indicators/thresholds show up for OTHER people who open the link.
     let customIndicators = JSON.parse(localStorage.getItem('ENT_WATER_CONFIG')) || [];
     let masterIndicators = JSON.parse(localStorage.getItem('ENT_WATER_CONFIG_MASTER')) || [...customIndicators];
     let sysThresholds = JSON.parse(localStorage.getItem('ENT_THRESHOLDS_CONFIG_V3')) || {};
@@ -541,8 +544,8 @@
           customIndicators.push(newInd);
           masterIndicators.push(newInd);
 
-          localStorage.setItem('ENT_WATER_CONFIG', JSON.stringify(customIndicators));
-          localStorage.setItem('ENT_WATER_CONFIG_MASTER', JSON.stringify(masterIndicators));
+          db.ref('system_config/indicators').set(customIndicators);
+          db.ref('system_config/master_indicators').set(masterIndicators);
 
           if (!currentSelectedIndicator) currentSelectedIndicator = key;
 
@@ -572,6 +575,37 @@
           });
           waterData.sort((a, b) => (b.id || 0) - (a.id || 0));
         }
+        render();
+      });
+
+      // Sync indicator config (this is what the chart, form fields and thresholds are built from)
+      // so every visitor sees the same indicators, not just whoever created them on their own device.
+      db.ref('system_config/indicators').on('value', snapshot => {
+        const data = snapshot.val();
+        customIndicators = data ? Object.values(data) : [];
+        localStorage.setItem('ENT_WATER_CONFIG', JSON.stringify(customIndicators));
+
+        if (!currentSelectedIndicator && customIndicators.length > 0) {
+          currentSelectedIndicator = customIndicators[0].key;
+        }
+
+        cleanOrphanedThresholds();
+        renderFormCustomInputs();
+        renderSettingsList();
+        renderThresholdFields();
+        renderChartIndicatorTabs();
+        render();
+      });
+
+      db.ref('system_config/master_indicators').on('value', snapshot => {
+        const data = snapshot.val();
+        masterIndicators = data ? Object.values(data) : [];
+      });
+
+      db.ref('system_config/thresholds').on('value', snapshot => {
+        sysThresholds = snapshot.val() || {};
+        localStorage.setItem('ENT_THRESHOLDS_CONFIG_V3', JSON.stringify(sysThresholds));
+        renderFormCustomInputs();
         render();
       });
     }
@@ -806,7 +840,7 @@
       });
 
       sysThresholds = newThresholds;
-      localStorage.setItem('ENT_THRESHOLDS_CONFIG_V3', JSON.stringify(sysThresholds));
+      db.ref('system_config/thresholds').set(sysThresholds);
       Swal.fire({ icon: 'success', title: 'ບັນທຶກເກນເຕືອນໄພຮຽບຮ້ອຍແລ້ວ!' });
       renderFormCustomInputs();
       render();
@@ -824,8 +858,8 @@
       customIndicators.push(newInd);
       masterIndicators.push(newInd);
 
-      localStorage.setItem('ENT_WATER_CONFIG', JSON.stringify(customIndicators));
-      localStorage.setItem('ENT_WATER_CONFIG_MASTER', JSON.stringify(masterIndicators));
+      db.ref('system_config/indicators').set(customIndicators);
+      db.ref('system_config/master_indicators').set(masterIndicators);
 
       document.getElementById('newIndName').value = '';
       document.getElementById('newIndUnit').value = '';
@@ -854,10 +888,10 @@
         if (result.isConfirmed) {
           delete sysThresholds[`cfg_${key}_min`];
           delete sysThresholds[`cfg_${key}_max`];
-          localStorage.setItem('ENT_THRESHOLDS_CONFIG_V3', JSON.stringify(sysThresholds));
+          db.ref('system_config/thresholds').set(sysThresholds);
 
           customIndicators = customIndicators.filter(i => i.key !== key);
-          localStorage.setItem('ENT_WATER_CONFIG', JSON.stringify(customIndicators));
+          db.ref('system_config/indicators').set(customIndicators);
           
           if (currentSelectedIndicator === key) {
             currentSelectedIndicator = customIndicators.length > 0 ? customIndicators[0].key : '';
