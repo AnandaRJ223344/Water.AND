@@ -99,6 +99,7 @@
             <option value="STAFF">🛠️ Staff (ລະດັບກາງ)</option>
             <option value="VIEWER" selected>👁️ User (ຜູ້ໃຊ້ທົ່ວໄປ)</option>
           </select>
+          <span id="loggedInUserLabel" class="text-[11px] text-emerald-400 font-semibold hidden"></span>
         </div>
 
         <button onclick="toggleLogsModal()" class="bg-indigo-700 hover:bg-indigo-600 text-white text-xs px-3 py-2 rounded-lg font-medium transition flex items-center gap-1 shadow">
@@ -336,6 +337,7 @@
       <div class="flex border-b text-xs font-bold gap-2">
         <button onclick="switchConfigTab('indicators')" id="tabBtn-indicators" class="py-2 px-3 border-b-2 border-sky-600 text-sky-600">🧪 ເພີ່ມ Indicators</button>
         <button onclick="switchConfigTab('thresholds')" id="tabBtn-thresholds" class="py-2 px-3 border-b-2 border-transparent text-slate-500">⚠️ ເກນເຕືອນໄພ (Thresholds)</button>
+        <button onclick="switchConfigTab('users')" id="tabBtn-users" class="py-2 px-3 border-b-2 border-transparent text-slate-500">👤 ຜູ້ໃຊ້ (Users)</button>
       </div>
 
       <div id="tabContent-indicators" class="space-y-3">
@@ -352,6 +354,24 @@
       <div id="tabContent-thresholds" class="space-y-3 hidden">
         <div id="dynamicThresholdsContainer" class="grid grid-cols-2 gap-3 text-xs max-h-60 overflow-y-auto p-1"></div>
         <button onclick="saveThresholdConfig()" class="w-full bg-sky-700 text-white font-medium py-2 rounded-lg text-sm shadow">💾 ບັນທຶກເກນເຕືອນໄພ</button>
+      </div>
+
+      <div id="tabContent-users" class="space-y-3 hidden">
+        <p class="text-[11px] text-slate-500">ເພີ່ມຜູ້ໃຊ້ພ້ອມກຳນົດລະຫັດຜ່ານສະເພາະຄົນ ແທນການໃຊ້ລະຫັດຮ່ວມກັນ. ເມື່ອເລືອກສິດ Staff/Super Admin ຢູ່ໜ້າຫຼັກ, ລະບົບຈະກວດລະຫັດນີ້.</p>
+        <div class="flex flex-col gap-2">
+          <input type="text" id="newUserName" autocomplete="off" placeholder="ຊື່ຜູ້ໃຊ້" class="border p-2 rounded-lg text-sm w-full outline-none">
+          <div class="flex gap-2">
+            <input type="password" id="newUserPass" autocomplete="off" placeholder="ລະຫັດຜ່ານ" class="border p-2 rounded-lg text-sm flex-1 outline-none">
+            <select id="newUserRole" class="border p-2 rounded-lg text-sm outline-none bg-white">
+              <option value="STAFF">🛠️ Staff</option>
+              <option value="SUPER_ADMIN">👑 Super Admin</option>
+            </select>
+          </div>
+        </div>
+        <button onclick="addSystemUser()" class="w-full bg-indigo-700 text-white font-medium py-2 rounded-lg text-sm shadow">➕ ເພີ່ມຜູ້ໃຊ້</button>
+        <div class="border-t pt-2">
+          <ul id="systemUsersList" class="space-y-1 max-h-40 overflow-y-auto"></ul>
+        </div>
       </div>
     </div>
   </div>
@@ -379,6 +399,8 @@
     let customIndicators = JSON.parse(localStorage.getItem('ENT_WATER_CONFIG')) || [];
     let masterIndicators = JSON.parse(localStorage.getItem('ENT_WATER_CONFIG_MASTER')) || [...customIndicators];
     let sysThresholds = JSON.parse(localStorage.getItem('ENT_THRESHOLDS_CONFIG_V3')) || {};
+    let systemUsers = [];
+    let currentUserName = '';
     
     let tempStations = [];
     let expandedRows = {};
@@ -427,6 +449,10 @@
       sessionStorage.removeItem('isLoggedIn');
       document.getElementById('topPass').value = '';
       document.getElementById('bottomPass').value = '';
+      currentUserRole = 'VIEWER';
+      currentUserName = '';
+      document.getElementById('roleSelector').value = 'VIEWER';
+      updateRBACUI();
       checkAuthStatus();
     }
 
@@ -612,6 +638,69 @@
         renderFormCustomInputs();
         render();
       });
+
+      db.ref('system_config/users').on('value', snapshot => {
+        const data = snapshot.val();
+        systemUsers = [];
+        if (data) {
+          Object.keys(data).forEach(key => systemUsers.push({ fbKey: key, ...data[key] }));
+        }
+        renderSystemUsersList();
+      });
+    }
+
+    /* --- USER MANAGEMENT (per-user password instead of one shared code) --- */
+    function addSystemUser() {
+      if (currentUserRole !== 'SUPER_ADMIN') return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+
+      const name = document.getElementById('newUserName').value.trim();
+      const password = document.getElementById('newUserPass').value;
+      const role = document.getElementById('newUserRole').value;
+
+      if (!name) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາລະບຸຊື່ຜູ້ໃຊ້!' });
+      if (!password || password.length < 4) return Swal.fire({ icon: 'warning', title: 'ລະຫັດຜ່ານຕ້ອງມີຢ່າງນ້ອຍ 4 ໂຕອັກສອນ!' });
+
+      db.ref('system_config/users').push({ name, password, role }).then(() => {
+        document.getElementById('newUserName').value = '';
+        document.getElementById('newUserPass').value = '';
+        Swal.fire({ icon: 'success', title: `ເພີ່ມຜູ້ໃຊ້ "${name}" ສຳເລັດ!`, timer: 1500, showConfirmButton: false });
+      });
+    }
+
+    function removeSystemUser(fbKey, name) {
+      if (currentUserRole !== 'SUPER_ADMIN') return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+
+      Swal.fire({
+        title: `⚠️ ລົບຜູ້ໃຊ້ "${name}"?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'ລົບ',
+        cancelButtonText: 'ຍົກເລີກ'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          db.ref('system_config/users/' + fbKey).remove();
+        }
+      });
+    }
+
+    function renderSystemUsersList() {
+      const list = document.getElementById('systemUsersList');
+      if (!list) return;
+      if (systemUsers.length === 0) {
+        list.innerHTML = `<p class="text-xs text-slate-400 text-center py-2 bg-slate-50 rounded-lg border border-dashed border-slate-200">ຍັງບໍ່ມີຜູ້ໃຊ້ (ໃຊ້ລະຫັດເລີ່ມຕົ້ນໄປກ່ອນ)</p>`;
+        return;
+      }
+      list.innerHTML = systemUsers.map(u => `
+        <li class="flex justify-between items-center bg-slate-50 p-2 rounded border text-xs">
+          <span>
+            <strong>${u.name}</strong>
+            <span class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${u.role === 'SUPER_ADMIN' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}">${u.role === 'SUPER_ADMIN' ? '👑 Super Admin' : '🛠️ Staff'}</span>
+          </span>
+          <button onclick="removeSystemUser('${u.fbKey}', '${u.name}')" class="text-rose-600 font-bold">ລົບ</button>
+        </li>
+      `).join('');
     }
 
     function toggleLogsModal() {
@@ -664,9 +753,12 @@
     }
 
     async function changeUserRole(newRole) {
-      if (newRole === 'SUPER_ADMIN') {
+      let matchedUserName = '';
+
+      if (newRole === 'SUPER_ADMIN' || newRole === 'STAFF') {
+        const roleLabel = newRole === 'SUPER_ADMIN' ? 'Super Admin' : 'Staff';
         const { value: pin } = await Swal.fire({
-          title: '🔒 ກະລຸນາໃສ່ລະຫັດຜ່ານ Super Admin:',
+          title: `🔒 ກະລຸນາໃສ່ລະຫັດຜ່ານ ${roleLabel}:`,
           input: 'password',
           inputPlaceholder: 'ກະລຸນາປ້ອນລະຫັດຜ່ານ...',
           showCancelButton: true,
@@ -674,35 +766,44 @@
           cancelButtonText: 'ຍົກເລີກ'
         });
 
-        if (pin !== '9999') {
-          Swal.fire({ icon: 'error', title: 'ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ!' });
+        if (pin === undefined) {
+          // cancelled
           document.getElementById('roleSelector').value = currentUserRole;
           return;
         }
-      } else if (newRole === 'STAFF') {
-        const { value: pin } = await Swal.fire({
-          title: '🔒 ກະລຸນາໃສ່ລະຫັດຜ່ານ Staff:',
-          input: 'password',
-          inputPlaceholder: 'ກະລຸນາປ້ອນລະຫັດຜ່ານ...',
-          showCancelButton: true,
-          confirmButtonText: 'ຕົກລົງ',
-          cancelButtonText: 'ຍົກເລີກ'
-        });
 
-        if (pin !== '1234') {
+        // 1) Check individual user accounts set up in ⚙️ ຕັ້ງຄ່າລະບົບ > 👤 ຜູ້ໃຊ້
+        const matchedUser = systemUsers.find(u => u.role === newRole && u.password === pin);
+        // 2) Fallback to the original shared codes, so access still works before any users are added
+        const fallbackOk = (newRole === 'SUPER_ADMIN' && pin === '9999') || (newRole === 'STAFF' && pin === '1234');
+
+        if (!matchedUser && !fallbackOk) {
           Swal.fire({ icon: 'error', title: 'ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ!' });
           document.getElementById('roleSelector').value = currentUserRole;
           return;
         }
+
+        matchedUserName = matchedUser ? matchedUser.name : '';
       }
 
       currentUserRole = newRole;
+      currentUserName = matchedUserName;
       updateRBACUI();
       renderFormCustomInputs();
       render();
     }
 
     function updateRBACUI() {
+      const userLabel = document.getElementById('loggedInUserLabel');
+      if (userLabel) {
+        if (currentUserName) {
+          userLabel.innerText = `(${currentUserName})`;
+          userLabel.classList.remove('hidden');
+        } else {
+          userLabel.classList.add('hidden');
+        }
+      }
+
       const adminBtn = document.getElementById('adminSettingsBtn');
       const adminClearBtn = document.getElementById('adminClearAllBtn');
       const addTempBtn = document.getElementById('addTempBtn');
@@ -787,13 +888,14 @@
     });
 
     function switchConfigTab(tabName) {
-      ['indicators', 'thresholds'].forEach(t => {
+      ['indicators', 'thresholds', 'users'].forEach(t => {
         document.getElementById(`tabContent-${t}`).classList.add('hidden');
         document.getElementById(`tabBtn-${t}`).className = "py-2 px-3 border-b-2 border-transparent text-slate-500";
       });
       document.getElementById(`tabContent-${tabName}`).classList.remove('hidden');
       document.getElementById(`tabBtn-${tabName}`).className = "py-2 px-3 border-b-2 border-sky-600 text-sky-600 font-bold";
       if (tabName === 'thresholds') renderThresholdFields();
+      if (tabName === 'users') renderSystemUsersList();
     }
 
     function toggleSettingsModal() {
@@ -801,6 +903,7 @@
       document.getElementById('settingsModal').classList.toggle('hidden');
       renderSettingsList();
       renderThresholdFields();
+      renderSystemUsersList();
     }
 
     function renderThresholdFields() {
