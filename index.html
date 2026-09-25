@@ -499,35 +499,94 @@
       gpsBtn.innerText = '⏳ ດຶງພິກັດ...';
       gpsBtn.disabled = true;
 
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            document.getElementById('lat').value = position.coords.latitude.toFixed(6);
-            document.getElementById('lng').value = position.coords.longitude.toFixed(6);
-            gpsBtn.innerText = '🎯 ດຶງ GPS';
-            gpsBtn.disabled = false;
-            
-            Swal.fire({
-              icon: 'success',
-              title: 'ດຶງພິກັດສຳເລັດ!',
-              timer: 1500,
-              showConfirmButton: false
-            });
-          },
-          (error) => {
-            gpsBtn.innerText = '🎯 ດຶງ GPS';
-            gpsBtn.disabled = false;
-            let errMsg = 'ບໍ່ສາມາດດຶງພິກັດ GPS ໄດ້';
-            if (error.code === error.PERMISSION_DENIED) errMsg = 'ກະລຸນາເປີດສິດ Access Location ໃນບຣາວເຊີ!';
-            Swal.fire({ icon: 'error', title: 'ເກີດຂໍ້ຜິດພາດ', text: errMsg });
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-      } else {
+      // Running inside an iframe (e.g. the W3Schools "Tryit Editor" preview) blocks
+      // geolocation at the browser level via Permissions Policy - no matter what the
+      // person allowed for the outer site. The only fix is to open the page directly,
+      // outside the iframe, so we detect this up front and offer that escape hatch.
+      let isInIframe = false;
+      try { isInIframe = window.self !== window.top; } catch (e) { isInIframe = true; }
+
+      if (isInIframe) {
+        gpsBtn.innerText = '🎯 ດຶງ GPS';
+        gpsBtn.disabled = false;
+        Swal.fire({
+          icon: 'warning',
+          title: 'ໜ້ານີ້ຖືກຝັງຢູ່ໃນ iframe',
+          html: 'ໜ້ານີ້ກຳລັງແລ່ນຢູ່ພາຍໃນ iframe ຂອງເວັບໄຊອື່ນ (ເຊັ່ນ W3Schools Tryit) ເຊິ່ງບຣາວເຊີຈະ<b>ບລັອກ GPS ໂດຍອັດຕະໂນມັດ</b> ບໍ່ວ່າຈະອະນຸຍາດສິດ Location ຫຼືບໍ່.<br><br>ກະລຸນາເປີດໜ້ານີ້ໃນແທັບໃໝ່ໂດຍກົງ ແລ້ວລອງກົດ "ດຶງ GPS" ອີກຄັ້ງ.',
+          confirmButtonText: '🔗 ເປີດໃນແທັບໃໝ່',
+          showCancelButton: true,
+          cancelButtonText: 'ປິດ'
+        }).then((result) => {
+          if (result.isConfirmed) {
+            window.open(window.location.href, '_blank');
+          }
+        });
+        return;
+      }
+
+      // Geolocation only works on HTTPS (or localhost). Opening the file directly
+      // (file://) or over plain HTTP is the #1 real-world cause of "permission denied"
+      // even when the person never actually got asked or clicked deny.
+      const isSecureOrigin = window.isSecureContext ||
+        location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+      if (!navigator.geolocation) {
         gpsBtn.innerText = '🎯 ດຶງ GPS';
         gpsBtn.disabled = false;
         Swal.fire({ icon: 'error', title: 'ບໍ່ຮອງຮັບ', text: 'ບຣາວເຊີຂອງທ່ານບໍ່ຮອງຮັບ Geolocation' });
+        return;
       }
+
+      if (!isSecureOrigin) {
+        gpsBtn.innerText = '🎯 ດຶງ GPS';
+        gpsBtn.disabled = false;
+        Swal.fire({
+          icon: 'error',
+          title: 'ບໍ່ສາມາດດຶງພິກັດໄດ້',
+          html: 'ໜ້ານີ້ບໍ່ໄດ້ເປີດຜ່ານ <b>HTTPS</b> (ຫຼືເປີດເປັນໄຟລ໌ໂດຍກົງ) ເຊິ່ງບຣາວເຊີບໍ່ອະນຸຍາດໃຫ້ໃຊ້ GPS ໃນກໍລະນີນີ້.<br><br>ກະລຸນາເປີດເວັບໄຊຜ່ານລິ້ງ <b>https://...</b> ແທນ.'
+        });
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          document.getElementById('lat').value = position.coords.latitude.toFixed(6);
+          document.getElementById('lng').value = position.coords.longitude.toFixed(6);
+          gpsBtn.innerText = '🎯 ດຶງ GPS';
+          gpsBtn.disabled = false;
+
+          Swal.fire({
+            icon: 'success',
+            title: 'ດຶງພິກັດສຳເລັດ!',
+            timer: 1500,
+            showConfirmButton: false
+          });
+        },
+        (error) => {
+          gpsBtn.innerText = '🎯 ດຶງ GPS';
+          gpsBtn.disabled = false;
+
+          let title = 'ບໍ່ສາມາດດຶງພິກັດ GPS ໄດ້';
+          let html = 'ກະລຸນາລອງໃໝ່ອີກຄັ້ງ.';
+
+          if (error.code === error.PERMISSION_DENIED) {
+            title = 'ສິດ Access Location ຖືກປິດ';
+            html = `ກະລຸນາອະນຸຍາດສິດເຂົ້າເຖິງທີ່ຕັ້ງ (Location) ໃຫ້ເວັບໄຊນີ້:<br><br>
+              1️⃣ ກົດໄອຄອນ 🔒 / ⓘ ຢູ່ໜ້າ URL ດ້ານເທິງບຣາວເຊີ<br>
+              2️⃣ ຊອກຫາ "Location" ແລ້ວປ່ຽນເປັນ <b>Allow</b><br>
+              3️⃣ ໂຫລດໜ້ານີ້ຄືນໃໝ່ (Refresh) ແລ້ວກົດ "ດຶງ GPS" ອີກຄັ້ງ`;
+          } else if (error.code === error.POSITION_UNAVAILABLE) {
+            title = 'ບໍ່ພົບສັນຍານ GPS';
+            html = 'ອຸປະກອນຂອງທ່ານບໍ່ສາມາດຫາຕຳແໜ່ງໄດ້ໃນຕອນນີ້ — ກະລຸນາເປີດ GPS/Location ໃນອຸປະກອນ ຫຼື ອອກໄປບ່ອນທີ່ສັນຍານດີກວ່າ ແລ້ວລອງໃໝ່.';
+          } else if (error.code === error.TIMEOUT) {
+            title = 'ດຶງພິກັດຊ້າເກີນໄປ';
+            html = 'ການຄົ້ນຫາຕຳແໜ່ງໃຊ້ເວລາດົນເກີນໄປ ກະລຸນາລອງໃໝ່ອີກຄັ້ງ.';
+          }
+
+          Swal.fire({ icon: 'error', title, html });
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
     }
 
     /* --- Quick Add Indicator Prompt (LAO) --- */
@@ -1363,10 +1422,29 @@
 
         if (isExpanded) {
           stations.forEach((st, stIdx) => {
-            let customColsHTML = customIndicators.map(i => {
-              const val = st.customs ? (st.customs[i.key] ?? '-') : '-';
-              return `<span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200"><b>${i.name}:</b> ${val} ${i.unit || ''}</span>`;
-            }).join(' ');
+            let customColsHTML = `
+              <div class="overflow-x-auto rounded-lg border border-slate-200 mt-1">
+                <table class="w-full text-[11px] border-collapse">
+                  <thead class="bg-slate-100 text-slate-600">
+                    <tr>
+                      ${customIndicators.map(i => `<th class="p-1.5 text-left font-bold border-b border-slate-200 whitespace-nowrap">${i.name}${i.unit ? ' (' + i.unit + ')' : ''}</th>`).join('')}
+                      <th class="p-1.5 text-left font-bold border-b border-slate-200 whitespace-nowrap">ສະຖານະ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="bg-white hover:bg-sky-50/40">
+                      ${customIndicators.map(i => {
+                        const val = st.customs ? (st.customs[i.key] ?? '-') : '-';
+                        return `<td class="p-1.5 whitespace-nowrap">${val}</td>`;
+                      }).join('')}
+                      <td class="p-1.5 whitespace-nowrap">
+                        <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${st.status ? st.status.class : 'bg-emerald-100 text-emerald-800'}">${st.status ? st.status.text : '✅ Normal'}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            `;
 
             tbody.innerHTML += `
               <tr class="bg-white text-xs border-b border-slate-100 hover:bg-sky-50/30">
@@ -1387,10 +1465,7 @@
                     ` : ''}
                   </div>
 
-                  <div class="flex items-center gap-2 flex-wrap">
-                    ${customColsHTML}
-                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${st.status ? st.status.class : 'bg-emerald-100 text-emerald-800'}">${st.status ? st.status.text : '✅ Normal'}</span>
-                  </div>
+                  ${customColsHTML}
                 </td>
               </tr>
             `;
