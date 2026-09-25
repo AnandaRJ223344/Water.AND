@@ -357,7 +357,8 @@
       </div>
 
       <div id="tabContent-users" class="space-y-3 hidden">
-        <p class="text-[11px] text-slate-500">ເພີ່ມຜູ້ໃຊ້ພ້ອມກຳນົດລະຫັດຜ່ານສະເພາະຄົນ ແທນການໃຊ້ລະຫັດຮ່ວມກັນ. ເມື່ອເລືອກສິດ Staff/Super Admin ຢູ່ໜ້າຫຼັກ, ລະບົບຈະກວດລະຫັດນີ້.</p>
+        <p class="text-[11px] text-slate-500">ເພີ່ມຜູ້ໃຊ້ພ້ອມກຳນົດລະຫັດຜ່ານສະເພາະຄົນ ແທນການໃຊ້ລະຫັດຮ່ວມກັນ. ເມື່ອເລືອກສິດ Staff/Super Admin ຢູ່ໜ້າຫຼັກ, ລະບົບຈະກວດລະຫັດນີ້ ແລະ ລົງຊື່ຜູ້ໃຊ້ໃນທຸກການບັນທຶກ/ແກ້ໄຂ/ລົບອັດຕະໂນມັດ.</p>
+        <p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-1">⚠️ ເມື່ອສ້າງຜູ້ໃຊ້ສິດໃດແລ້ວ ລະຫັດເລີ່ມຕົ້ນຂອງສິດນັ້ນ (Staff: 1234, Super Admin: 9999) ຈະໃຊ້ບໍ່ໄດ້ອີກ. ກະລຸນາສ້າງຜູ້ໃຊ້ Super Admin ໃຫ້ຕົນເອງກ່ອນ ແລະ ຈື່ລະຫັດໄວ້.</p>
         <div class="flex flex-col gap-2">
           <input type="text" id="newUserName" autocomplete="off" placeholder="ຊື່ຜູ້ໃຊ້" class="border p-2 rounded-lg text-sm w-full outline-none">
           <div class="flex gap-2">
@@ -840,10 +841,19 @@
         // 1) Check individual user accounts set up in ⚙️ ຕັ້ງຄ່າລະບົບ > 👤 ຜູ້ໃຊ້
         const matchedUser = systemUsers.find(u => u.role === newRole && u.password === pin);
         // 2) Fallback to the original shared codes, so access still works before any users are added
-        const fallbackOk = (newRole === 'SUPER_ADMIN' && pin === '9999') || (newRole === 'STAFF' && pin === '1234');
+        //    ລະຫັດເລີ່ມຕົ້ນຈະໃຊ້ໄດ້ສະເພາະຕອນທີ່ຍັງບໍ່ມີຜູ້ໃຊ້ສ່ວນຕົວຂອງສິດນັ້ນ.
+        //    ເມື່ອສ້າງຜູ້ໃຊ້ແລ້ວ ລະຫັດເລີ່ມຕົ້ນຂອງສິດນັ້ນຈະຖືກປິດອັດຕະໂນມັດ (ທຸກການກະທຳຈະມີຊື່ຄົນເຮັດ).
+        const hasUsersForRole = systemUsers.some(u => u.role === newRole);
+        const fallbackOk = !hasUsersForRole &&
+          ((newRole === 'SUPER_ADMIN' && pin === '9999') || (newRole === 'STAFF' && pin === '1234'));
 
         if (!matchedUser && !fallbackOk) {
-          Swal.fire({ icon: 'error', title: 'ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ!' });
+          const isOldCode = (newRole === 'SUPER_ADMIN' && pin === '9999') || (newRole === 'STAFF' && pin === '1234');
+          Swal.fire({
+            icon: 'error',
+            title: 'ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ!',
+            text: isOldCode ? 'ລະຫັດເລີ່ມຕົ້ນຖືກປິດແລ້ວ ເພາະມີຜູ້ໃຊ້ສ່ວນຕົວແລ້ວ. ກະລຸນາໃຊ້ລະຫັດຜ່ານຂອງທ່ານເອງ.' : ''
+          });
           document.getElementById('roleSelector').value = currentUserRole;
           return;
         }
@@ -853,6 +863,9 @@
 
       currentUserRole = newRole;
       currentUserName = matchedUserName;
+      if (matchedUserName) {
+        Swal.fire({ icon: 'success', title: `ສະບາຍດີ ${matchedUserName}`, text: 'ທຸກການບັນທຶກ, ແກ້ໄຂ ແລະ ລົບ ຈະລົງຊື່ທ່ານອັດຕະໂນມັດ', timer: 1800, showConfirmButton: false });
+      }
       updateRBACUI();
       renderFormCustomInputs();
       render();
@@ -888,6 +901,7 @@
         if (gpsBtn) gpsBtn.disabled = false;
         if (quickAddIndBtn) quickAddIndBtn.disabled = false;
         formInputs.forEach(input => input.disabled = false);
+        applyRecorderLock();
 
       } else if (currentUserRole === 'VIEWER') {
         adminBtn.classList.add('hidden');
@@ -896,7 +910,34 @@
         if (gpsBtn) gpsBtn.disabled = true;
         if (quickAddIndBtn) quickAddIndBtn.disabled = true;
         formInputs.forEach(input => input.disabled = true);
+        applyRecorderLock();
       }
+    }
+
+    // ຖ້າເຂົ້າລະບົບດ້ວຍບັນຊີສ່ວນຕົວ → ໃສ່ຊື່ຜູ້ບັນທຶກໃຫ້ອັດຕະໂນມັດ ແລະ ລັອກບໍ່ໃຫ້ປ່ຽນ
+    function applyRecorderLock() {
+      const el = document.getElementById('recorderName');
+      if (!el) return;
+      if (currentUserName) {
+        el.value = currentUserName;
+        el.readOnly = true;
+        el.classList.add('bg-slate-100', 'text-slate-600', 'cursor-not-allowed');
+        el.title = 'ລົງຊື່ອັດຕະໂນມັດຕາມຜູ້ໃຊ້ທີ່ເຂົ້າລະບົບ';
+      } else {
+        if (el.readOnly) el.value = '';
+        el.readOnly = false;
+        el.classList.remove('bg-slate-100', 'text-slate-600', 'cursor-not-allowed');
+        el.title = '';
+      }
+    }
+
+    // ໃຊ້ກັບກ່ອງຢືນຢັນການລົບ: ຖ້າຮູ້ຊື່ຜູ້ໃຊ້ແລ້ວ ບໍ່ຕ້ອງພິມຊື່ອີກ
+    function actorPrompt(opts) {
+      if (!currentUserName) return opts;
+      const o = { ...opts };
+      delete o.input; delete o.inputPlaceholder; delete o.inputValidator;
+      o.text = `ດຳເນີນການໂດຍ: ${currentUserName}`;
+      return o;
     }
 
     function initMap() {
@@ -1229,7 +1270,7 @@
 
       const companyName = document.getElementById('companyName').value.trim();
       const projectLocation = document.getElementById('projectLocation').value.trim();
-      const recorderName = document.getElementById('recorderName').value.trim();
+      const recorderName = currentUserName || document.getElementById('recorderName').value.trim();
 
       if (!companyName) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາລະບຸຊື່ບໍລິສັດ / ຫົວຂໍ້ຫຼັກ!' });
       if (!recorderName) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາລະບຸຊື່ຜູ້ບັນທຶກ!' });
@@ -1529,6 +1570,13 @@
         </div>`;
     }
 
+    function editorField(p) {
+      if (currentUserName) {
+        return `<p class="text-[11px] text-slate-600 pb-2">👤 ຜູ້ແກ້ໄຂ: <b class="text-slate-800">${currentUserName}</b> <span class="text-slate-400">(ລົງຊື່ອັດຕະໂນມັດ)</span></p>`;
+      }
+      return editInput(p + 'editor', '👤 ຊື່ຜູ້ແກ້ໄຂ (ຈຳເປັນ)', '', 'placeholder="ພິມຊື່ຜູ້ແກ້ໄຂ..."');
+    }
+
     function renderStationEditSection(fbKey, stIdx, st) {
       const isOpen = editingStation && editingStation.fbKey === fbKey && editingStation.idx === stIdx;
       if (!isOpen) {
@@ -1559,7 +1607,7 @@
             </div>` : ''}
           <div class="flex flex-wrap items-end gap-2 border-t border-amber-200 pt-2">
             <div class="flex-1 min-w-[160px]">
-              ${editInput(p + 'editor', '👤 ຊື່ຜູ້ແກ້ໄຂ (ຈຳເປັນ)', currentUserName || '', 'placeholder="ພິມຊື່ຜູ້ແກ້ໄຂ..."')}
+              ${editorField(p)}
             </div>
             <button onclick="saveStationEdit('${fbKey}', ${stIdx})" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] px-3 py-2 rounded-lg shadow transition">💾 ບັນທຶກການແກ້ໄຂ</button>
             <button onclick="cancelEdit()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[11px] px-3 py-2 rounded-lg transition">ຍົກເລີກ</button>
@@ -1587,7 +1635,7 @@
           </div>
           <div class="flex flex-wrap items-end gap-2 border-t border-indigo-100 pt-2">
             <div class="flex-1 min-w-[160px]">
-              ${editInput(p + 'editor', '👤 ຊື່ຜູ້ແກ້ໄຂ (ຈຳເປັນ)', currentUserName || '', 'placeholder="ພິມຊື່ຜູ້ແກ້ໄຂ..."')}
+              ${editorField(p)}
             </div>
             <button onclick="saveMasterEdit('${item.fbKey}')" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] px-3 py-2 rounded-lg shadow transition">💾 ບັນທຶກການແກ້ໄຂ</button>
             <button onclick="cancelEdit()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[11px] px-3 py-2 rounded-lg transition">ຍົກເລີກ</button>
@@ -1623,7 +1671,7 @@
       const p = `edit_${fbKey}_${idx}_`;
       const get = f => (document.getElementById(p + f)?.value ?? '').trim();
 
-      const editor = get('editor');
+      const editor = currentUserName || get('editor');
       const code = get('code');
       const name = get('name');
       const lat = parseFloat(get('lat'));
@@ -1680,7 +1728,7 @@
       const p = `editm_${fbKey}_`;
       const get = f => (document.getElementById(p + f)?.value ?? '').trim();
 
-      const editor = get('editor');
+      const editor = currentUserName || get('editor');
       const companyName = get('company');
       const recordedBy = get('recorder');
 
@@ -1712,7 +1760,7 @@
         return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
       }
 
-      Swal.fire({
+      Swal.fire(actorPrompt({
         title: `⚠️ ຢືນຢັນລົບສະຖານີ "${stationName}"?`,
         text: 'ກະລຸນາລະບຸຊື່ຜູ້ລົບຂໍ້ມູນເພື່ອຢືນຢັນ:',
         input: 'text',
@@ -1728,9 +1776,9 @@
             return 'ກະລຸນາປ້ອນຊື່ຜູ້ລຶບກ່ອນ!'
           }
         }
-      }).then((result) => {
+      })).then((result) => {
         if (result.isConfirmed) {
-          const removerName = result.value.trim();
+          const removerName = currentUserName || String(result.value).trim();
           const item = waterData.find(d => d.fbKey === fbKey);
 
           if (item && item.stations) {
@@ -1767,7 +1815,7 @@
         return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
       }
 
-      Swal.fire({
+      Swal.fire(actorPrompt({
         title: `⚠️ ຢືນຢັນການລົບ ${codeName}?`,
         text: 'ກະລຸນາລະບຸຊື່ຜູ້ລົບຂໍ້ມູນເພື່ອຢືນຢັນ:',
         input: 'text',
@@ -1783,9 +1831,9 @@
             return 'ກະລຸນາປ້ອນຊື່ຜູ້ລຶບກ່ອນ!'
           }
         }
-      }).then((result) => {
+      })).then((result) => {
         if (result.isConfirmed) {
-          const removerName = result.value.trim();
+          const removerName = currentUserName || String(result.value).trim();
 
           db.ref('activity_logs').push({
             action: 'DELETE',
@@ -1812,7 +1860,7 @@
         return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
       }
 
-      Swal.fire({
+      Swal.fire(actorPrompt({
         title: '💣 ຢືນຢັນລົບຂໍ້ມູນທັງໝົດ?',
         text: 'ຂໍ້ມູນທັງໝົດຈະຖືກລົບຖາວອນ! ກະລຸນາລະບຸຊື່ຜູ້ລົບ:',
         input: 'text',
@@ -1828,9 +1876,9 @@
             return 'ກະລຸນາປ້ອນຊື່ຜູ້ລຶບກ່ອນ!'
           }
         }
-      }).then((result) => {
+      })).then((result) => {
         if (result.isConfirmed) {
-          const removerName = result.value.trim();
+          const removerName = currentUserName || String(result.value).trim();
 
           db.ref('activity_logs').push({
             action: 'CLEAR_ALL',
