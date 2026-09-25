@@ -404,6 +404,8 @@
     
     let tempStations = [];
     let expandedRows = {};
+    let editingStation = null; // { fbKey, idx } ສະຖານີທີ່ກຳລັງແກ້ໄຂ
+    let editingMaster = null;  // fbKey ຂອງຊຸດຂໍ້ມູນທີ່ກຳລັງແກ້ໄຂຂໍ້ມູນຫຼັກ
 
     let map, markersGroup;
     let apexChart = null;
@@ -794,6 +796,10 @@
             actionBadge = '<span class="bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-bold">🔴 ລົບທັງໝົດ</span>';
           } else if (log.action === 'DELETE_STATION') {
             actionBadge = '<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">🟠 ລົບສະຖານີຍ່ອຍ</span>';
+          } else if (log.action === 'EDIT_STATION') {
+            actionBadge = '<span class="bg-sky-100 text-sky-800 px-2 py-0.5 rounded font-bold">✏️ ແກ້ໄຂສະຖານີ</span>';
+          } else if (log.action === 'EDIT_MASTER') {
+            actionBadge = '<span class="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">✏️ ແກ້ໄຂຂໍ້ມູນຫຼັກ</span>';
           } else if (log.action === 'CLEAR_ALL') {
             actionBadge = '<span class="bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-bold">💣 ລ້າງທັງໝົດ</span>';
           }
@@ -1325,6 +1331,9 @@
       cleanOrphanedThresholds();
       markersGroup.clearLayers();
       const tbody = document.getElementById('dataTable');
+      // ເກັບຄ່າທີ່ກຳລັງພິມຢູ່ໃນຊ່ອງແກ້ໄຂ ເພື່ອບໍ່ໃຫ້ຫາຍເມື່ອຕາຕະລາງຖືກ render ໃໝ່
+      const draftEditValues = {};
+      tbody.querySelectorAll('[data-edit-field]').forEach(el => { draftEditValues[el.id] = el.value; });
       tbody.innerHTML = '';
 
       const searchKeyword = document.getElementById('searchInput').value.toLowerCase();
@@ -1466,11 +1475,27 @@
                   </div>
 
                   ${customColsHTML}
+
+                  ${canDelete ? renderStationEditSection(item.fbKey, stIdx, st) : ''}
                 </td>
               </tr>
             `;
           });
+
+          if (canDelete) {
+            tbody.innerHTML += `
+              <tr class="bg-indigo-50/40 text-xs border-b border-slate-200">
+                <td class="p-2"></td>
+                <td colspan="6" class="p-3 pl-8">${renderMasterEditSection(item)}</td>
+              </tr>
+            `;
+          }
         }
+      });
+
+      Object.keys(draftEditValues).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = draftEditValues[id];
       });
 
       if (validLaosBounds.length > 0) {
@@ -1480,6 +1505,206 @@
       }
 
       initApexChart(flatStationsForChart);
+    }
+
+    /* --- EDIT SYSTEM (ແກ້ໄຂຂໍ້ມູນ ຢູ່ກ້ອງບ໋ອກລາຍລະອຽດ) --- */
+    function escAttr(v) {
+      return String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function parseIndicatorValue(val) {
+      val = String(val ?? '').trim();
+      if (val === '' || val === '-') return '-';
+      if (val.toUpperCase() === 'ND') return 'ND';
+      if (isNaN(parseFloat(val)) || isNaN(Number(val))) return val; // ເຊັ່ນ "<0.01", ">100"
+      return parseFloat(val);
+    }
+
+    function editInput(id, label, value, extra = '') {
+      return `
+        <div>
+          <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">${label}</label>
+          <input type="text" id="${id}" data-edit-field value="${escAttr(value)}" ${extra} autocomplete="off"
+            class="w-full border border-slate-300 p-1.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-sky-500 bg-white">
+        </div>`;
+    }
+
+    function renderStationEditSection(fbKey, stIdx, st) {
+      const isOpen = editingStation && editingStation.fbKey === fbKey && editingStation.idx === stIdx;
+      if (!isOpen) {
+        return `
+          <button onclick="openStationEdit('${fbKey}', ${stIdx})" class="mt-2 w-full bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-[11px] px-3 py-1.5 rounded-lg border border-dashed border-amber-300 transition">
+            ✏️ ແກ້ໄຂຂໍ້ມູນສະຖານີນີ້
+          </button>`;
+      }
+      const p = `edit_${fbKey}_${stIdx}_`;
+      const indFields = customIndicators.map(i =>
+        editInput(`${p}ind_${i.key}`, `${i.name}${i.unit ? ' (' + i.unit + ')' : ''}`, st.customs ? (st.customs[i.key] ?? '-') : '-', 'placeholder="ຕົວເລກ, ND, <0.01"')
+      ).join('');
+
+      return `
+        <div class="mt-2 bg-amber-50/70 border border-amber-200 rounded-xl p-3 space-y-3">
+          <p class="text-[11px] font-bold text-amber-800">✏️ ແກ້ໄຂຂໍ້ມູນສະຖານີ: [${st.code}] ${st.name}</p>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+            ${editInput(p + 'code', 'ລະຫັດສະຖານີ', st.code)}
+            ${editInput(p + 'name', 'ຊື່ສະຖານີ / ສະຖານທີ່', st.name)}
+            ${editInput(p + 'province', 'ແຂວງ/ເມືອງ', st.province)}
+            ${editInput(p + 'lat', 'Lat', st.lat)}
+            ${editInput(p + 'lng', 'Lng', st.lng)}
+          </div>
+          ${customIndicators.length ? `
+            <div>
+              <p class="text-[10px] font-bold text-slate-700 mb-1">🧪 ຄ່າໂຕຊີ້ວັດ (ພິມ ND = ບໍ່ພົບ, ປ່ອຍຫວ່າງ = ບໍ່ມີຄ່າ)</p>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-2">${indFields}</div>
+            </div>` : ''}
+          <div class="flex flex-wrap items-end gap-2 border-t border-amber-200 pt-2">
+            <div class="flex-1 min-w-[160px]">
+              ${editInput(p + 'editor', '👤 ຊື່ຜູ້ແກ້ໄຂ (ຈຳເປັນ)', currentUserName || '', 'placeholder="ພິມຊື່ຜູ້ແກ້ໄຂ..."')}
+            </div>
+            <button onclick="saveStationEdit('${fbKey}', ${stIdx})" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] px-3 py-2 rounded-lg shadow transition">💾 ບັນທຶກການແກ້ໄຂ</button>
+            <button onclick="cancelEdit()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[11px] px-3 py-2 rounded-lg transition">ຍົກເລີກ</button>
+          </div>
+        </div>`;
+    }
+
+    function renderMasterEditSection(item) {
+      const isOpen = editingMaster === item.fbKey;
+      if (!isOpen) {
+        return `
+          <button onclick="openMasterEdit('${item.fbKey}')" class="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] px-3 py-1.5 rounded-lg border border-dashed border-indigo-300 transition">
+            ✏️ ແກ້ໄຂຂໍ້ມູນຫຼັກ (ຊື່ບໍລິສັດ / ທີ່ຕັ້ງ / ຜູ້ບັນທຶກ / ເວລາ)
+          </button>`;
+      }
+      const p = `editm_${item.fbKey}_`;
+      return `
+        <div class="bg-white border border-indigo-200 rounded-xl p-3 space-y-3">
+          <p class="text-[11px] font-bold text-indigo-800">✏️ ແກ້ໄຂຂໍ້ມູນຫຼັກຂອງຊຸດຂໍ້ມູນນີ້</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            ${editInput(p + 'company', '🏢 ຊື່ບໍລິສັດ / ຫົວຂໍ້ຫຼັກ', item.companyName || item.name || '')}
+            ${editInput(p + 'location', '📍 ຈຸດພິກັດ / ທີ່ຕັ້ງ ຂອງໂຄງການ', item.projectLocation || '')}
+            ${editInput(p + 'recorder', '👤 ຜູ້ບັນທຶກ', item.recordedBy || '')}
+            ${editInput(p + 'date', '⏰ ເວລາບັນທຶກ', item.date || '')}
+          </div>
+          <div class="flex flex-wrap items-end gap-2 border-t border-indigo-100 pt-2">
+            <div class="flex-1 min-w-[160px]">
+              ${editInput(p + 'editor', '👤 ຊື່ຜູ້ແກ້ໄຂ (ຈຳເປັນ)', currentUserName || '', 'placeholder="ພິມຊື່ຜູ້ແກ້ໄຂ..."')}
+            </div>
+            <button onclick="saveMasterEdit('${item.fbKey}')" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] px-3 py-2 rounded-lg shadow transition">💾 ບັນທຶກການແກ້ໄຂ</button>
+            <button onclick="cancelEdit()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[11px] px-3 py-2 rounded-lg transition">ຍົກເລີກ</button>
+          </div>
+        </div>`;
+    }
+
+    function openStationEdit(fbKey, idx) {
+      editingStation = { fbKey, idx };
+      editingMaster = null;
+      render();
+    }
+
+    function openMasterEdit(fbKey) {
+      editingMaster = fbKey;
+      editingStation = null;
+      render();
+    }
+
+    function cancelEdit() {
+      editingStation = null;
+      editingMaster = null;
+      render();
+    }
+
+    function saveStationEdit(fbKey, idx) {
+      if (currentUserRole !== 'SUPER_ADMIN' && currentUserRole !== 'STAFF') {
+        return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+      }
+      const item = waterData.find(d => d.fbKey === fbKey);
+      if (!item) return Swal.fire({ icon: 'error', title: 'ບໍ່ພົບຂໍ້ມູນ!' });
+
+      const p = `edit_${fbKey}_${idx}_`;
+      const get = f => (document.getElementById(p + f)?.value ?? '').trim();
+
+      const editor = get('editor');
+      const code = get('code');
+      const name = get('name');
+      const lat = parseFloat(get('lat'));
+      const lng = parseFloat(get('lng'));
+
+      if (!editor) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາປ້ອນຊື່ຜູ້ແກ້ໄຂ!' });
+      if (!code || !name) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາລະບຸລະຫັດ ແລະ ຊື່ສະຖານີ!' });
+      if (isNaN(lat) || isNaN(lng)) return Swal.fire({ icon: 'warning', title: 'ຄ່າ Lat / Lng ບໍ່ຖືກຕ້ອງ!' });
+
+      const oldStation = item.stations ? item.stations[idx] : item;
+      const customs = { ...(oldStation.customs || {}) };
+      customIndicators.forEach(i => { customs[i.key] = parseIndicatorValue(get('ind_' + i.key)); });
+
+      const updated = {
+        ...oldStation,
+        code, name,
+        province: get('province'),
+        lat, lng,
+        customs,
+        status: evalStatus(customs)
+      };
+      delete updated.fbKey;
+
+      let savePromise;
+      if (item.stations) {
+        savePromise = db.ref(`water_records/${fbKey}/stations/${idx}`).set(updated);
+      } else {
+        // ຂໍ້ມູນຮູບແບບເກົ່າ (ບໍ່ມີ stations) → ອັບເດດທີ່ຕົວ record ໂດຍກົງ
+        const { code, name, province, lat, lng, customs, status } = updated;
+        savePromise = db.ref(`water_records/${fbKey}`).update({ code, name, province, lat, lng, customs, status });
+      }
+
+      savePromise.then(() => {
+        db.ref('activity_logs').push({
+          action: 'EDIT_STATION',
+          itemCode: `${item.companyName || item.name || ''} -> [${code}] ${name}`,
+          performedBy: editor,
+          timestamp: new Date().toLocaleString('lo-LA'),
+          userRole: currentUserRole
+        });
+        editingStation = null;
+        render();
+        Swal.fire({ icon: 'success', title: 'ແກ້ໄຂຂໍ້ມູນສຳເລັດ!', text: `ດຳເນີນການໂດຍ: ${editor}`, timer: 1500, showConfirmButton: false });
+      }).catch(err => Swal.fire({ icon: 'error', title: 'ບັນທຶກບໍ່ສຳເລັດ', text: err.message }));
+    }
+
+    function saveMasterEdit(fbKey) {
+      if (currentUserRole !== 'SUPER_ADMIN' && currentUserRole !== 'STAFF') {
+        return Swal.fire({ icon: 'error', title: 'ສິດບໍ່ພຽງພໍ!' });
+      }
+      const item = waterData.find(d => d.fbKey === fbKey);
+      if (!item) return Swal.fire({ icon: 'error', title: 'ບໍ່ພົບຂໍ້ມູນ!' });
+
+      const p = `editm_${fbKey}_`;
+      const get = f => (document.getElementById(p + f)?.value ?? '').trim();
+
+      const editor = get('editor');
+      const companyName = get('company');
+      const recordedBy = get('recorder');
+
+      if (!editor) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາປ້ອນຊື່ຜູ້ແກ້ໄຂ!' });
+      if (!companyName) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາລະບຸຊື່ບໍລິສັດ / ຫົວຂໍ້ຫຼັກ!' });
+      if (!recordedBy) return Swal.fire({ icon: 'warning', title: 'ກະລຸນາລະບຸຊື່ຜູ້ບັນທຶກ!' });
+
+      db.ref(`water_records/${fbKey}`).update({
+        companyName,
+        projectLocation: get('location'),
+        recordedBy,
+        date: get('date') || item.date || ''
+      }).then(() => {
+        db.ref('activity_logs').push({
+          action: 'EDIT_MASTER',
+          itemCode: companyName,
+          performedBy: editor,
+          timestamp: new Date().toLocaleString('lo-LA'),
+          userRole: currentUserRole
+        });
+        editingMaster = null;
+        render();
+        Swal.fire({ icon: 'success', title: 'ແກ້ໄຂຂໍ້ມູນຫຼັກສຳເລັດ!', text: `ດຳເນີນການໂດຍ: ${editor}`, timer: 1500, showConfirmButton: false });
+      }).catch(err => Swal.fire({ icon: 'error', title: 'ບັນທຶກບໍ່ສຳເລັດ', text: err.message }));
     }
 
     function deleteSubStation(fbKey, stationIndex, stationName) {
